@@ -1,31 +1,29 @@
-# pg-telemetry-lab
+# 📊 pg-telemetry-lab
 
-Experiment project to learn PostgreSQL logical replication, database benchmarking,
-and telemetry collection.
+**A production-like Golang project for provisioning PostgreSQL clusters, running benchmarking workloads, and collecting operational telemetry.**
 
-**Week 1 focus:**  
-Build a Go CLI tool (`telemetryctl`) that provisions local PostgreSQL instances
-(primary + replicas) using Docker and a YAML config file.
+This project demonstrates:
 
-pg-telemetry-lab/
-│
-├── README.md
-├── config.example.yaml
-│
-├── docs/
-│   ├── week1-plan.md
-│   └── architecture-overview.md   (optional placeholder)
-│
-├── cmd/
-│   └── telemetryctl/
-│       └── main.go                (empty placeholder for Day 2)
-│
-└── internal/
-    ├── config/
-    │   └── config.go              (empty placeholder for Day 2)
-    │
-    └── provider/
-        ├── provider.go            (interface placeholder)
-        │
-        └── dockerpg/
-            └── provider.go        (implementation placeholder)
+- Infrastructure provisioning patterns (local + cloud-ready architecture)
+- Go CLI applications
+- YAML-driven configuration
+- Provider abstraction (Docker now, AWS/GCP later)
+- Docker-based Postgres clusters (primary + replicas)
+- Foundation for logical replication, pgbench automation, metrics collection, and Prometheus integration
+
+This is actively developed as part of a multi-week roadmap.
+
+---
+
+## ✨ Features (Current)
+
+### ✅ CLI Tool: `telemetryctl`
+A Go command-line tool to manage PostgreSQL infrastructure.
+
+Supported commands:
+
+```bash
+telemetryctl provision local --config config.example.yaml
+telemetryctl destroy local   --config config.example.yaml
+
+
