@@ -1,0 +1,17 @@
+version: 1
+environment: "local"
+
+postgres:
+  image: "postgres:16"
+
+  primary:
+    name: "pg-primary"
+    port: 5432
+    database: "pgbench"
+    user: "postgres"
+    password: "postgres"
+
+  replicas:
+    count: 2
+    base_port: 5540
+    name_prefix: "pg-replica-"

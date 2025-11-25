@@ -1,0 +1,16 @@
+# Binaries
+/telemetryctl
+*.exe
+
+# Go build cache
+/bin/
+/pkg/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
