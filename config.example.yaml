@@ -9,7 +9,6 @@ postgres:
     port: 5432
     database: "pgbench"
     user: "postgres"
-    password: "postgres"
 
   replicas:
     count: 2

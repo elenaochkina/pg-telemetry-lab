@@ -28,17 +28,16 @@ func main() {
 		log.Fatalf("parsing flags: %v", err)
 	}
 
-	// Load config
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
-	}
-
 	switch cmd {
 	case "provision":
+		//Load config only for provision
+		cfg, err := config.Load(configPath)
+		if err != nil {
+			log.Fatalf("failed to load config: %v", err)
+		}
 		handleProvision(target, cfg)
 	case "destroy":
-		handleDestroy(target, cfg)
+		handleDestroy(target)
 	default:
 		usageAndExit(fmt.Sprintf("unknown command %q", cmd))
 	}
@@ -57,11 +56,11 @@ func handleProvision(target string, cfg *config.Config) {
 	}
 }
 
-func handleDestroy(target string, cfg *config.Config) {
+func handleDestroy(target string) {
 	switch target {
 	case "local":
 		provider := dockerpg.NewDockerPostgresProvider()
-		if err := provider.DestroyLocalPostgres(cfg); err != nil {
+		if err := provider.DestroyLocalPostgres(); err != nil {
 			log.Fatalf("destroying local postgres: %v", err)
 		}
 		fmt.Println("✅ Local PostgreSQL cluster destroyed (containers removed).")

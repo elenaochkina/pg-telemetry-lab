@@ -23,7 +23,6 @@ A Go command-line tool to manage PostgreSQL infrastructure.
 Supported commands:
 
 ```bash
-telemetryctl provision local --config config.example.yaml
-telemetryctl destroy local   --config config.example.yaml
-
+go run ./cmd/telemetryctl provision local --config=config.example.yaml
+go run ./cmd/telemetryctl destroy   local
 
