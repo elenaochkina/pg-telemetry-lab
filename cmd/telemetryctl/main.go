@@ -47,10 +47,12 @@ func handleProvision(target string, cfg *config.Config) {
 	switch target {
 	case "local":
 		provider := dockerpg.NewDockerPostgresProvider()
-		if err := provider.ProvisionLocalPostgres(cfg); err != nil {
+		if err := provider.ProvisionPostgres(cfg); err != nil {
 			log.Fatalf("provisioning local postgres: %v", err)
 		}
 		fmt.Println("✅ Local PostgreSQL cluster provisioned successfully.")
+	case "cloud":
+		log.Fatalf("cloud target not implemented yet")
 	default:
 		log.Fatalf("unsupported target %q (only \"local\" is supported for now)", target)
 	}
@@ -60,10 +62,12 @@ func handleDestroy(target string) {
 	switch target {
 	case "local":
 		provider := dockerpg.NewDockerPostgresProvider()
-		if err := provider.DestroyLocalPostgres(); err != nil {
+		if err := provider.DestroyPostgres(); err != nil {
 			log.Fatalf("destroying local postgres: %v", err)
 		}
 		fmt.Println("✅ Local PostgreSQL cluster destroyed (containers removed).")
+	case "cloud":
+		log.Fatalf("cloud target not implemented yet")
 	default:
 		log.Fatalf("unsupported target %q (only \"local\" is supported for now)", target)
 	}

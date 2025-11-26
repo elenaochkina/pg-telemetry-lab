@@ -7,8 +7,11 @@ import (
 	"strings"
 
 	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
+	"github.com/elenaochkina/pg-telemetry-lab/internal/provider"
 	"github.com/joho/godotenv"
 )
+
+var _ provider.PostgresProvider = (*DockerPostgresProvider)(nil)
 
 type DockerPostgresProvider struct{}
 
@@ -17,8 +20,8 @@ func NewDockerPostgresProvider() *DockerPostgresProvider {
 	return &DockerPostgresProvider{}
 }
 
-// ProvisionLocalPostgres starts the primary and replica Postgres containers using Docker.
-func (dp *DockerPostgresProvider) ProvisionLocalPostgres(cfg *config.Config) error {
+// ProvisionPostgres starts the primary and replica Postgres containers using Docker.
+func (dp *DockerPostgresProvider) ProvisionPostgres(cfg *config.Config) error {
 	if err := dp.runPrimary(cfg); err != nil {
 		return fmt.Errorf("running primary Postgres container: %w", err)
 	}
@@ -40,8 +43,8 @@ func (dp *DockerPostgresProvider) ProvisionLocalPostgres(cfg *config.Config) err
 	return nil
 }
 
-// DestroyLocalPostgres stops and removes the primary and replica Postgres containers
-func (dp *DockerPostgresProvider) DestroyLocalPostgres() error {
+// DestroyPostgres stops and removes the primary and replica Postgres containers
+func (dp *DockerPostgresProvider) DestroyPostgres() error {
 	state, err := LoadLocalState()
 	if err != nil {
 		return fmt.Errorf("loading local state: %w", err)
