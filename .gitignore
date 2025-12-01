@@ -14,3 +14,10 @@
 # OS files
 .DS_Store
 Thumbs.db
+
+# secrets
+.env
+.env.
+
+.telemetryctl
+.telemetryctl.*

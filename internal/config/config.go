@@ -19,7 +19,7 @@ type Config struct {
 			Port     int    `yaml:"port"`
 			Database string `yaml:"database"`
 			User     string `yaml:"user"`
-			Password string `yaml:"password"`
+	
 		} `yaml:"primary"`
 
 		Replicas struct {

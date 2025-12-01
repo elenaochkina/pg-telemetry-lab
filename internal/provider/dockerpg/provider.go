@@ -7,70 +7,78 @@ import (
 	"strings"
 
 	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
+	"github.com/elenaochkina/pg-telemetry-lab/internal/provider"
+	"github.com/joho/godotenv"
 )
+
+var _ provider.PostgresProvider = (*DockerPostgresProvider)(nil)
 
 type DockerPostgresProvider struct{}
 
 func NewDockerPostgresProvider() *DockerPostgresProvider {
+	_ = godotenv.Load()
 	return &DockerPostgresProvider{}
 }
 
-// ProvisionLocalPostgres starts the primary and replica Postgres containers using Docker.
-func (dp *DockerPostgresProvider) ProvisionLocalPostgres(cfg *config.Config) error {
+// ProvisionPostgres starts the primary and replica Postgres containers using Docker.
+func (dp *DockerPostgresProvider) ProvisionPostgres(cfg *config.Config) error {
 	if err := dp.runPrimary(cfg); err != nil {
 		return fmt.Errorf("running primary Postgres container: %w", err)
 	}
+	replicas := make([]string, 0, cfg.Postgres.Replicas.Count)
 	for i := 0; i < cfg.Postgres.Replicas.Count; i++ {
 		if err := dp.runReplica(cfg, i); err != nil {
 			return fmt.Errorf("running replica %d Postgres container: %w", i+1, err)
 		}
+		replicas = append(replicas, replicaName(cfg, i))
+	}
+	state := LocalState{
+		PrimaryContainer:  cfg.Postgres.Primary.Name,
+		ReplicaContainers: replicas,
+		Image:             cfg.Postgres.Image,
+	}
+	if err := SaveLocalState(state); err != nil {
+		return fmt.Errorf("saving local state: %w", err)
 	}
 	return nil
 }
 
-// DestroyLocalPostgres stops and removes the primary and replica Postgres containers
-func (dp *DockerPostgresProvider) DestroyLocalPostgres(cfg *config.Config) error {
-	var (
-		errs       []string
-		primaryErr error
-	)
-
-	if err := runCommand("docker", "rm", "-f", cfg.Postgres.Primary.Name); err != nil {
-		primaryErr = fmt.Errorf("removing primary Postgres container %q: %w",
-			cfg.Postgres.Primary.Name, err)
-		errs = append(errs, primaryErr.Error())
+// DestroyPostgres stops and removes the primary and replica Postgres containers
+func (dp *DockerPostgresProvider) DestroyPostgres() error {
+	state, err := LoadLocalState()
+	if err != nil {
+		return fmt.Errorf("loading local state: %w", err)
 	}
-
-	for i := 0; i < cfg.Postgres.Replicas.Count; i++ {
-		name := replicaName(cfg, i)
-		if err := runCommand("docker", "rm", "-f", name); err != nil {
-			errs = append(errs,
-				fmt.Sprintf("removing replica %d Postgres container %q: %v",
-					i+1, name, err),
-			)
+	var errs []string
+	if err := runCommand("docker", "rm", "-f", state.PrimaryContainer); err != nil {
+		errs = append(errs, fmt.Sprintf("removing primary container %q: %v", state.PrimaryContainer, err))
+	}
+	for _, replica := range state.ReplicaContainers {
+		if err := runCommand("docker", "rm", "-f", replica); err != nil {
+			errs = append(errs, fmt.Sprintf("removing replica container %q: %v", replica, err))
 		}
 	}
-
-	if len(errs) == 0 {
-		return nil
+	if len(errs) > 0 {
+		return fmt.Errorf("errors occurred while destroying containers: %s", strings.Join(errs, "; "))
 	}
+	_ = os.Remove(LocalStatePath)
 
-	// If primary failed, you might want to highlight that:
-	if primaryErr != nil {
-		return fmt.Errorf("destroy failed (primary and/or replicas): %s", strings.Join(errs, "; "))
-	}
-
-	return fmt.Errorf("destroy failed (replicas): %s", strings.Join(errs, "; "))
+	return nil
 }
-
 
 func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
 	name := cfg.Postgres.Primary.Name
 	port := cfg.Postgres.Primary.Port
 	image := cfg.Postgres.Image
 	envUser := cfg.Postgres.Primary.User
-	envPassword := cfg.Postgres.Primary.Password
+
 	envDatabase := cfg.Postgres.Primary.Database
+
+	// Load password from environment (.env)
+	envPassword := os.Getenv("PG_PRIMARY_PASSWORD")
+	if envPassword == "" {
+		return fmt.Errorf("PG_PRIMARY_PASSWORD is not set (put it in .env)")
+	}
 
 	removeContainerIfExists(name)
 
@@ -78,13 +86,13 @@ func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
 		"run",
 		"-d",
 		"--name", name,
-		"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", envPassword),
 		"-e", fmt.Sprintf("POSTGRES_USER=%s", envUser),
+		"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", envPassword),
 		"-e", fmt.Sprintf("POSTGRES_DB=%s", envDatabase),
 		"-p", fmt.Sprintf("%d:5432", port),
 		image,
 	}
-	
+
 	return runCommand("docker", args...)
 
 }
@@ -93,21 +101,26 @@ func (dp *DockerPostgresProvider) runReplica(cfg *config.Config, replicaIndex in
 	hostPort := cfg.Postgres.Replicas.BasePort + replicaIndex
 	image := cfg.Postgres.Image
 	envUser := cfg.Postgres.Primary.User
-	envPassword := cfg.Postgres.Primary.Password
 	envDatabase := cfg.Postgres.Primary.Database
-	
+
+	// Load password from environment (.env)
+	envPassword := os.Getenv("PG_PRIMARY_PASSWORD")
+	if envPassword == "" {
+		return fmt.Errorf("PG_PRIMARY_PASSWORD is not set (put it in .env)")
+	}
+
 	removeContainerIfExists(name)
 
 	args := []string{
 		"run",
 		"-d",
 		"--name", name,
-		"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", envPassword),
 		"-e", fmt.Sprintf("POSTGRES_USER=%s", envUser),
+		"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", envPassword),
 		"-e", fmt.Sprintf("POSTGRES_DB=%s", envDatabase),
 		"-p", fmt.Sprintf("%d:5432", hostPort),
 		image,
-	}	
+	}
 
 	return runCommand("docker", args...)
 }
@@ -134,11 +147,10 @@ func removeContainerIfExists(name string) {
 	if err != nil {
 		output := string(out)
 		if strings.Contains(output, "No such container") {
-			return 
+			return
 		}
 
 		// Otherwise, warn the user
 		fmt.Fprintf(os.Stderr, "warning: could not remove container %q: %v\n", name, err)
 	}
 }
-
