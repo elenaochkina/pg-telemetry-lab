@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,16 +30,21 @@ func (r *DockerRunner) Init(opts PgBenchOptions) error {
 
 	// Flags specific to initialization.
 	pgbenchArgs := []string{
-		"pgbench",
 		"-i",
 		"-s", strconv.Itoa(opts.Scale),
 	}
 	// Shared connection args.
 	pgbenchArgs = append(pgbenchArgs, buildConnArgs(opts)...)
 
-	if err := r.runPgbench(pgbenchArgs); err != nil {
-		return fmt.Errorf("initialization failed: %w", err)
-	}
+	output, err := r.runPgbench(pgbenchArgs)
+
+	// For now, just print the raw pgbench output.
+	// Later parse this to extract TPS, latency, etc.
+	fmt.Print(output)
+
+	if err != nil {
+		return fmt.Errorf("pgbench initialization failed: %w", err)
+	}	
 
 	fmt.Println("✅ Initialization complete.")
 	return nil
@@ -50,7 +56,6 @@ func (r *DockerRunner) Run(opts PgBenchOptions) error {
 
 	// Flags specific to running the workload.
 	pgbenchArgs := []string{
-		"pgbench",
 		"-T", strconv.Itoa(opts.Duration),
 		"-c", strconv.Itoa(opts.Clients),
 	}
@@ -61,20 +66,24 @@ func (r *DockerRunner) Run(opts PgBenchOptions) error {
 	// Shared connection args.
 	pgbenchArgs = append(pgbenchArgs, buildConnArgs(opts)...)
 
-	if err := r.runPgbench(pgbenchArgs); err != nil {
-		return fmt.Errorf("benchmark run failed: %w", err)
-	}
+	output, err := r.runPgbench(pgbenchArgs)
+	fmt.Print(output)
+
+	if err != nil {
+		return fmt.Errorf("pgbench run failed: %w", err)
+	}	
 
 	fmt.Println("✅ Benchmark run complete.")
 	return nil
 }
 
 // runPgbench runs a pgbench command inside a Docker container on the configured network.
-func (r *DockerRunner) runPgbench(pgbenchArgs []string) error {
+// It returns the combined pgbench output (stdout + stderr) and an error, if any.
+func (r *DockerRunner) runPgbench(pgbenchArgs []string) (string, error) {
 	// Get password from environment (host-side).
 	pw, err := util.GetRequiredEnv("PG_PASSWORD")
 	if err != nil {
-		return err
+		return "",  err
 	}
 
 	// Build the full docker command arguments.
@@ -83,6 +92,7 @@ func (r *DockerRunner) runPgbench(pgbenchArgs []string) error {
 		"--rm",
 		"--network", r.Network,
 		"-e", "PGPASSWORD=" + pw, // inside container, pgbench reads PGPASSWORD
+		"--entrypoint", "pgbench", // override default entrypoint
 		r.Image,
 	}
 	dockerArgs = append(dockerArgs, pgbenchArgs...)
@@ -92,12 +102,20 @@ func (r *DockerRunner) runPgbench(pgbenchArgs []string) error {
 
 	fmt.Printf("Executing: docker %s\n", util.FormatArgs(printArgs))
 
-	// Execute the command.
+ 	// Capture pgbench output (both stdout and stderr).
+	var out bytes.Buffer
+	
 	cmd := exec.Command("docker", dockerArgs...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = &out
+	cmd.Stderr = &out // pgbench prints progress to stderr
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		// Return whatever pgbench printed, plus a wrapped error.
+		return out.String(), fmt.Errorf("running pgbench: %w", err)
+	}
+
+	return out.String(), err
+
 }
 
 // buildConnArgs builds the common pgbench connection arguments.

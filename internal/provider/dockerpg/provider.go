@@ -97,33 +97,39 @@ func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
 }
 
 func (dp *DockerPostgresProvider) runReplica(cfg *config.Config, index int) error {
+	// NOTE: At the moment this starts an additional standalone Postgres
+	// container with the same image and credentials as the primary. It is
+	// intended to become a replication replica in a follow-up change.
 	pw, err := util.GetRequiredEnv("PG_PASSWORD")
 	if err != nil {
 		return err
 	}
 
-	name := fmt.Sprintf("%s%d", cfg.Postgres.Replicas.NamePrefix, index+1)
+	// Derive replica name and host port from config and index.
+	name := replicaName(cfg, index)
 	hostPort := cfg.Postgres.Replicas.BasePort + index
 
 	args := []string{
 		"run", "-d",
 		"--name", name,
-		"--network", cfg.Postgres.Network, // <-- attach to network
+		"--network", cfg.Postgres.Network, 
 		"-e", "POSTGRES_USER=" + cfg.Postgres.Primary.User,
-		"-e", "POSTGRES_PASSWORD=" + pw, // <-- real password
+		"-e", "POSTGRES_PASSWORD=" + pw, 
 		"-e", "POSTGRES_DB=" + cfg.Postgres.Primary.Database,
 		"-p", fmt.Sprintf("%d:5432", hostPort),
 		cfg.Postgres.Image,
 	}
 
-	printArgs := util.MaskArgs(args)
+// TODO: configure this container as a real replica of the primary:
+	//   - enable wal_level and replication settings on the primary
+	//   - use pg_basebackup / primary_conninfo to clone data from primary
+	//   - create and use replication slots
+	//   - switch from "standalone" to streaming/logical replica
 
-	fmt.Printf("Running: docker %s\n", strings.Join(printArgs, " "))
-
-	cmd := exec.Command("docker", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := runCommand("docker", args...); err != nil {
+		return fmt.Errorf("running replica container %q: %w", name, err)
+	}
+	return nil
 }
 
 func replicaName(cfg *config.Config, replicaIndex int) string {
@@ -132,7 +138,8 @@ func replicaName(cfg *config.Config, replicaIndex int) string {
 }
 
 func runCommand(name string, args ...string) error {
-	fmt.Printf("Running: %s %s\n", name, strings.Join(args, " "))
+	printArgs := util.MaskArgs(args)
+	fmt.Printf("Running: %s %s\n", name, strings.Join(printArgs, " "))
 
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
@@ -159,3 +166,5 @@ func ensureNetwork(network string) error {
 	createCmd.Stderr = os.Stderr
 	return createCmd.Run()
 }
+
+
