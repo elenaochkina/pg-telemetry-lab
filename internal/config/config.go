@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
+
 )
 
 // Config describes the structure of config.example.yaml.
@@ -14,11 +15,13 @@ type Config struct {
 
 	Postgres struct {
 		Image   string `yaml:"image"`
+		Network string `yaml:"network"`
 		Primary struct {
 			Name     string `yaml:"name"`
 			Port     int    `yaml:"port"`
 			Database string `yaml:"database"`
 			User     string `yaml:"user"`
+			Password string `yaml:"-"` // do not read password from YAML, load from .env or secret management
 	
 		} `yaml:"primary"`
 

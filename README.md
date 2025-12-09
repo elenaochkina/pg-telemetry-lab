@@ -22,7 +22,25 @@ A Go command-line tool to manage PostgreSQL infrastructure.
 
 Supported commands:
 
-```bash
-go run ./cmd/telemetryctl provision local --config=config.example.yaml
-go run ./cmd/telemetryctl destroy   local
+# Build CLI
+go build -o telemetryctl ./cmd/telemetryctl
 
+# Provision primary + replicas
+./telemetryctl provision local --config config.example.yaml
+
+# Verify network and containers:
+docker network ls      # shows pgnet
+docker ps              # shows pg-primary + replicas
+
+# Run benchmark
+./telemetryctl benchmark local \
+  --config config.example.yaml \
+  --duration 60 --clients 20 --scale 1 --progress 5
+
+# Check that:
+# - pgbench init runs successfully (creates pgbench_* tables)
+# - progress lines show tps/latency
+# - password is masked in the logged docker command
+
+# Destroy containers
+./telemetryctl destroy local
