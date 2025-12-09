@@ -3,7 +3,6 @@ package benchmark
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"os/exec"
 	"strconv"
 
