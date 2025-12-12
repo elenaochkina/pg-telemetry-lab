@@ -1,23 +1,36 @@
-# Binaries
+# ============================
+# Go build artifacts
+# ============================
 /telemetryctl
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-# Go build cache
-/bin/
-/pkg/
+# Go cache
+.gocache/
+go.sum.lock
 
-# IDE / editor
+# Coverage, test output
+*.out
+
+# ============================
+# Env and secrets
+# ============================
+.env
+.env.local
+.env.*.local
+
+# ============================
+# Project runtime state
+# ============================
+.telemetry/
+
+# ============================
+# Editors / OS
+# ============================
 .vscode/
 .idea/
-*.swp
-
-# OS files
 .DS_Store
-Thumbs.db
 
-# secrets
-.env
-.env.
-
-.telemetryctl
-.telemetryctl.*

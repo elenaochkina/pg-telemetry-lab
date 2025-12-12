@@ -8,7 +8,7 @@ import (
 
 	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/provider"
-	"github.com/joho/godotenv"
+	"github.com/elenaochkina/pg-telemetry-lab/internal/util"
 )
 
 var _ provider.PostgresProvider = (*DockerPostgresProvider)(nil)
@@ -16,12 +16,14 @@ var _ provider.PostgresProvider = (*DockerPostgresProvider)(nil)
 type DockerPostgresProvider struct{}
 
 func NewDockerPostgresProvider() *DockerPostgresProvider {
-	_ = godotenv.Load()
 	return &DockerPostgresProvider{}
 }
 
 // ProvisionPostgres starts the primary and replica Postgres containers using Docker.
 func (dp *DockerPostgresProvider) ProvisionPostgres(cfg *config.Config) error {
+	if err := ensureNetwork(cfg.Postgres.Network); err != nil {
+		return fmt.Errorf("ensuring docker network %q: %w", cfg.Postgres.Network, err)
+	}
 	if err := dp.runPrimary(cfg); err != nil {
 		return fmt.Errorf("running primary Postgres container: %w", err)
 	}
@@ -33,7 +35,7 @@ func (dp *DockerPostgresProvider) ProvisionPostgres(cfg *config.Config) error {
 		replicas = append(replicas, replicaName(cfg, i))
 	}
 	state := LocalState{
-		PrimaryContainer:  cfg.Postgres.Primary.Name,
+		PrimaryContainer:  cfg.Postgres.Primary.HostName,
 		ReplicaContainers: replicas,
 		Image:             cfg.Postgres.Image,
 	}
@@ -67,62 +69,67 @@ func (dp *DockerPostgresProvider) DestroyPostgres() error {
 }
 
 func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
-	name := cfg.Postgres.Primary.Name
-	port := cfg.Postgres.Primary.Port
-	image := cfg.Postgres.Image
-	envUser := cfg.Postgres.Primary.User
-
-	envDatabase := cfg.Postgres.Primary.Database
-
-	// Load password from environment (.env)
-	envPassword := os.Getenv("PG_PRIMARY_PASSWORD")
-	if envPassword == "" {
-		return fmt.Errorf("PG_PRIMARY_PASSWORD is not set (put it in .env)")
+	pw, err := util.GetRequiredEnv("PG_PASSWORD")
+	if err != nil {
+		return err
 	}
-
-	removeContainerIfExists(name)
 
 	args := []string{
-		"run",
-		"-d",
-		"--name", name,
-		"-e", fmt.Sprintf("POSTGRES_USER=%s", envUser),
-		"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", envPassword),
-		"-e", fmt.Sprintf("POSTGRES_DB=%s", envDatabase),
-		"-p", fmt.Sprintf("%d:5432", port),
-		image,
+		"run", "-d",
+		"--name", cfg.Postgres.Primary.HostName,
+		"--network", cfg.Postgres.Network,
+		"-e", "POSTGRES_USER=" + cfg.Postgres.Primary.User,
+		"-e", "POSTGRES_PASSWORD=" + pw,
+		"-e", "POSTGRES_DB=" + cfg.Postgres.Primary.Database,
+		"-p", fmt.Sprintf("%d:5432", cfg.Postgres.Primary.Port),
+		cfg.Postgres.Image,
 	}
 
-	return runCommand("docker", args...)
+	// Mask password when printing command
+	printArgs := util.MaskArgs(args)
 
+	fmt.Printf("Running: docker %s\n", strings.Join(printArgs, " "))
+
+	cmd := exec.Command("docker", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
-func (dp *DockerPostgresProvider) runReplica(cfg *config.Config, replicaIndex int) error {
-	name := replicaName(cfg, replicaIndex)
-	hostPort := cfg.Postgres.Replicas.BasePort + replicaIndex
-	image := cfg.Postgres.Image
-	envUser := cfg.Postgres.Primary.User
-	envDatabase := cfg.Postgres.Primary.Database
 
-	// Load password from environment (.env)
-	envPassword := os.Getenv("PG_PRIMARY_PASSWORD")
-	if envPassword == "" {
-		return fmt.Errorf("PG_PRIMARY_PASSWORD is not set (put it in .env)")
+func (dp *DockerPostgresProvider) runReplica(cfg *config.Config, index int) error {
+	// NOTE: At the moment this starts an additional standalone Postgres
+	// container with the same image and credentials as the primary. It is
+	// intended to become a replication replica in a follow-up change.
+	pw, err := util.GetRequiredEnv("PG_PASSWORD")
+	if err != nil {
+		return err
 	}
 
-	removeContainerIfExists(name)
+	// Derive replica name and host port from config and index.
+	name := replicaName(cfg, index)
+	hostPort := cfg.Postgres.Replicas.BasePort + index
 
 	args := []string{
-		"run",
-		"-d",
+		"run", "-d",
 		"--name", name,
-		"-e", fmt.Sprintf("POSTGRES_USER=%s", envUser),
-		"-e", fmt.Sprintf("POSTGRES_PASSWORD=%s", envPassword),
-		"-e", fmt.Sprintf("POSTGRES_DB=%s", envDatabase),
+		"--network", cfg.Postgres.Network, 
+		"-e", "POSTGRES_USER=" + cfg.Postgres.Primary.User,
+		"-e", "POSTGRES_PASSWORD=" + pw, 
+		"-e", "POSTGRES_DB=" + cfg.Postgres.Primary.Database,
 		"-p", fmt.Sprintf("%d:5432", hostPort),
-		image,
+		cfg.Postgres.Image,
 	}
 
-	return runCommand("docker", args...)
+// TODO: configure this container as a real replica of the primary:
+	//   - enable wal_level and replication settings on the primary
+	//   - use pg_basebackup / primary_conninfo to clone data from primary
+	//   - create and use replication slots
+	//   - switch from "standalone" to streaming/logical replica
+
+	if err := runCommand("docker", args...); err != nil {
+		return fmt.Errorf("running replica container %q: %w", name, err)
+	}
+	return nil
 }
 
 func replicaName(cfg *config.Config, replicaIndex int) string {
@@ -131,7 +138,8 @@ func replicaName(cfg *config.Config, replicaIndex int) string {
 }
 
 func runCommand(name string, args ...string) error {
-	fmt.Printf("Running: %s %s\n", name, strings.Join(args, " "))
+	printArgs := util.MaskArgs(args)
+	fmt.Printf("Running: %s %s\n", name, strings.Join(printArgs, " "))
 
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
@@ -139,18 +147,24 @@ func runCommand(name string, args ...string) error {
 
 	return cmd.Run()
 }
-func removeContainerIfExists(name string) {
-	cmd := exec.Command("docker", "rm", "-f", name)
-	out, err := cmd.CombinedOutput()
-
-	// If the error is "No such container", ignore silently
-	if err != nil {
-		output := string(out)
-		if strings.Contains(output, "No such container") {
-			return
-		}
-
-		// Otherwise, warn the user
-		fmt.Fprintf(os.Stderr, "warning: could not remove container %q: %v\n", name, err)
+func ensureNetwork(network string) error {
+	if network == "" {
+		return fmt.Errorf("postgres.network must be set in config")
 	}
+
+	// Check if network already exists.
+	checkCmd := exec.Command("docker", "network", "inspect", network)
+	if err := checkCmd.Run(); err == nil {
+		// Network already exists.
+		return nil
+	}
+
+	// Create the network.
+	fmt.Printf("Running: docker network create %s\n", network)
+	createCmd := exec.Command("docker", "network", "create", network)
+	createCmd.Stdout = os.Stdout
+	createCmd.Stderr = os.Stderr
+	return createCmd.Run()
 }
+
+
