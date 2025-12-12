@@ -121,7 +121,7 @@ func handleBenchmark(target string, cfg *config.Config, duration, clients, scale
 		)
 
 		opts := benchmark.PgBenchOptions{
-			Name:     cfg.Postgres.Primary.Name,
+			HostName:     cfg.Postgres.Primary.HostName,
 			Port:     cfg.Postgres.Primary.Port,
 			User:     cfg.Postgres.Primary.User,
 			Database: cfg.Postgres.Primary.Database,

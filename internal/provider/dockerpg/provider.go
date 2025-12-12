@@ -35,7 +35,7 @@ func (dp *DockerPostgresProvider) ProvisionPostgres(cfg *config.Config) error {
 		replicas = append(replicas, replicaName(cfg, i))
 	}
 	state := LocalState{
-		PrimaryContainer:  cfg.Postgres.Primary.Name,
+		PrimaryContainer:  cfg.Postgres.Primary.HostName,
 		ReplicaContainers: replicas,
 		Image:             cfg.Postgres.Image,
 	}
@@ -76,7 +76,7 @@ func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
 
 	args := []string{
 		"run", "-d",
-		"--name", cfg.Postgres.Primary.Name,
+		"--name", cfg.Postgres.Primary.HostName,
 		"--network", cfg.Postgres.Network,
 		"-e", "POSTGRES_USER=" + cfg.Postgres.Primary.User,
 		"-e", "POSTGRES_PASSWORD=" + pw,

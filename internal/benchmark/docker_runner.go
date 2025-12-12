@@ -120,7 +120,7 @@ func (r *DockerRunner) runPgbench(pgbenchArgs []string) (string, error) {
 // buildConnArgs builds the common pgbench connection arguments.
 func buildConnArgs(opts PgBenchOptions) []string {
 	return []string{
-		"-h", opts.Name,
+		"-h", opts.HostName,
 		"-p", strconv.Itoa(opts.Port),
 		"-U", opts.User,
 		opts.Database,

@@ -8,7 +8,7 @@ type PgBenchOptions struct {
 
     // Name is the hostname or container name of the PostgreSQL instance
     // pgbench should connect to. Example: "pg-primary".
-    Name string
+    HostName string
 
     // Port is the TCP port of the PostgreSQL instance pgbench connects to.
     // Example: 5432.

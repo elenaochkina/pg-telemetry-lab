@@ -17,7 +17,7 @@ type Config struct {
 		Image   string `yaml:"image"`
 		Network string `yaml:"network"`
 		Primary struct {
-			Name     string `yaml:"name"`
+			HostName     string `yaml:"name"`
 			Port     int    `yaml:"port"`
 			Database string `yaml:"database"`
 			User     string `yaml:"user"`
@@ -63,8 +63,8 @@ func (c *Config) Validate() error {
 	if c.Postgres.Image == "" {
 		return fmt.Errorf("postgres.image must be set")
 	}
-	if c.Postgres.Primary.Name == "" {
-		return fmt.Errorf("postgres.primary.name must be set")
+	if c.Postgres.Primary.HostName == "" {
+		return fmt.Errorf("postgres.primary.hostname must be set")
 	}
 	if c.Postgres.Primary.Port == 0 {
 		return fmt.Errorf("postgres.primary.port must be > 0")
