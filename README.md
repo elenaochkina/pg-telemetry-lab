@@ -33,7 +33,7 @@ Supported commands:
 ### Build the CLI
 
 ```bash
-go build -o telemetryctl ./cmd/telemetryctl
+go build -o telemetryctl .
 ```
 
 # Provision Local PostgreSQL Cluster
