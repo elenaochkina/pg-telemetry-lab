@@ -15,6 +15,9 @@ func MaskEnvArg(arg string) string {
 	if strings.HasPrefix(arg, "PGPASSWORD=") {
 		return "PG_PASSWORD=***"
 	}
+	if strings.HasPrefix(arg, "POSTGRES_PASSWORD=") {
+		return "POSTGRES_PASSWORD=***"
+	}
 
 	return arg
 }
