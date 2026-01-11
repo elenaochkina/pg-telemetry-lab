@@ -4,8 +4,26 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 )
 
+// EnsurePublication creates a publication if it doesn't exist, or adds missing tables to an existing one.
+//
+// Security Note on DDL and String Formatting:
+//
+// This function uses string formatting (fmt.Sprintf) to build DDL statements because PostgreSQL
+// does not support parameterized queries for identifiers (publication names, table names).
+// Parameterized queries ($1, $2) only work for VALUES, not for structural elements like table names.
+//
+// We use pgx.Identifier.Sanitize() which is the official pgx library method for safely quoting
+// and escaping SQL identifiers according to PostgreSQL rules. This is safer than custom escaping
+// because it's:
+//   - Battle-tested across thousands of projects
+//   - Maintained by PostgreSQL experts
+//   - Handles all edge cases (length limits, encoding, reserved keywords, etc.)
+//
+// This is safe because identifiers come from validated configuration, not untrusted user input.
 func (p *Publisher) EnsurePublication(ctx context.Context, pubName string, tables []string) error {
 	pubName = strings.TrimSpace(pubName)
 	if pubName == "" {
@@ -23,8 +41,8 @@ func (p *Publisher) EnsurePublication(ctx context.Context, pubName string, table
 	if !exists {
 		stmt := fmt.Sprintf(
 			"CREATE PUBLICATION %s FOR TABLE %s",
-			quoteIdent(pubName),
-			strings.Join(quoteTables(tables), ", "),
+			pgx.Identifier{pubName}.Sanitize(),
+			sanitizeTableList(tables),
 		)
 		if _, err := p.db.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("create publication %q: %w", pubName, err)
@@ -43,8 +61,8 @@ func (p *Publisher) EnsurePublication(ctx context.Context, pubName string, table
 
 	stmt := fmt.Sprintf(
 		"ALTER PUBLICATION %s ADD TABLE %s",
-		quoteIdent(pubName),
-		strings.Join(quoteTables(missing), ", "),
+		pgx.Identifier{pubName}.Sanitize(),
+		sanitizeTableList(missing),
 	)
 	if _, err := p.db.Exec(ctx, stmt); err != nil {
 		return fmt.Errorf("alter publication %q add tables: %w", pubName, err)
@@ -94,10 +112,33 @@ func (p *Publisher) missingPublicationTables(ctx context.Context, pubName string
 	return missing, nil
 }
 
-func quoteTables(tables []string) []string {
-	out := make([]string, 0, len(tables))
+// sanitizeTableList converts a list of table references to safely quoted SQL identifiers.
+//
+// Expected input format: "schema.table" (e.g., "public.pgbench_accounts")
+// Output: Comma-separated quoted identifiers (e.g., "public"."pgbench_accounts", "public"."pgbench_tellers")
+//
+// Uses pgx.Identifier to ensure proper PostgreSQL quoting and escaping.
+func sanitizeTableList(tables []string) string {
+	sanitized := make([]string, 0, len(tables))
 	for _, t := range tables {
-		out = append(out, quoteTable(t))
+		sanitized = append(sanitized, sanitizeTableName(t))
 	}
-	return out
+	return strings.Join(sanitized, ", ")
+}
+
+// sanitizeTableName safely quotes a table reference for use in SQL statements.
+//
+// Expected input: "schema.table" (e.g., "public.pgbench_accounts")
+// Output: Quoted identifier (e.g., "public"."pgbench_accounts")
+//
+// If input contains a dot, it's treated as schema.table and each part is quoted separately.
+// Otherwise, the entire string is quoted as a single identifier.
+func sanitizeTableName(tableName string) string {
+	parts := strings.Split(tableName, ".")
+	if len(parts) == 2 {
+		// Quote schema and table separately: schema.table → "schema"."table"
+		return pgx.Identifier{parts[0]}.Sanitize() + "." + pgx.Identifier{parts[1]}.Sanitize()
+	}
+	// Quote as single identifier
+	return pgx.Identifier{tableName}.Sanitize()
 }

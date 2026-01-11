@@ -8,7 +8,7 @@ import (
 )
 
 // DB is the minimal surface replication needs.
-// *pgxpool.Pool satisfies this interface.
+// *pgx.Conn satisfies this interface.
 type DB interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)

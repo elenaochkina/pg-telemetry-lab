@@ -31,7 +31,7 @@ func (s *Subscriber) GetProgress(ctx context.Context, subName string) (Subscript
 
 func (s *Subscriber) WaitUntilCaughtUp(ctx context.Context, subName string, pollInterval time.Duration, strict bool) error {
 	if pollInterval <= 0 {
-		pollInterval = 500 * time.Millisecond
+		return fmt.Errorf("pollInterval must be > 0, got %v", pollInterval)
 	}
 
 	ticker := time.NewTicker(pollInterval)

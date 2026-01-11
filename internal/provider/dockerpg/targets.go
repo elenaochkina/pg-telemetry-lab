@@ -12,9 +12,20 @@ import (
 func PrimaryTarget(cfg *config.Config) topology.PGTarget {
 	return topology.PGTarget{
 		Label:    "primary",
-		// Host:     "localhost",
-		Host: "127.0.0.1",
+		Host:     "127.0.0.1",
 		Port:     cfg.Postgres.Primary.Port,
+		Database: cfg.Postgres.Primary.Database,
+		User:     cfg.Postgres.Primary.User,
+	}
+}
+
+// PrimaryTargetFromDocker returns how to connect to the primary from inside a Docker container.
+// (Docker-specific assumption: containers connect via Docker DNS name + container port 5432.)
+func PrimaryTargetFromDocker(cfg *config.Config) topology.PGTarget {
+	return topology.PGTarget{
+		Label:    "primary",
+		Host:     cfg.Postgres.Primary.HostName, // e.g., "pg-primary" (Docker network hostname)
+		Port:     5432,                           // Internal container port
 		Database: cfg.Postgres.Primary.Database,
 		User:     cfg.Postgres.Primary.User,
 	}
@@ -36,4 +47,16 @@ func ReplicaTargets(cfg *config.Config) []topology.PGTarget {
 		})
 	}
 	return out
+}
+
+// ReplicaTargetFromDocker returns how to connect to a specific replica from inside a Docker container.
+// (Docker-specific assumption: containers connect via Docker DNS name + container port 5432.)
+func ReplicaTargetFromDocker(cfg *config.Config, index int) topology.PGTarget {
+	return topology.PGTarget{
+		Label:    fmt.Sprintf("replica-%d", index+1),
+		Host:     fmt.Sprintf("%s%d", cfg.Postgres.Replicas.NamePrefix, index+1), // e.g., "pg-replica-1"
+		Port:     5432, // Internal container port
+		Database: cfg.Postgres.Primary.Database,
+		User:     cfg.Postgres.Primary.User,
+	}
 }

@@ -3,7 +3,6 @@ package replication
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/db"
@@ -30,14 +29,14 @@ func EnsureLogicalReplication(ctx context.Context, cfg *config.Config) error {
 
 	// 1) Connect to primary from host
 	primaryTarget := dockerpg.PrimaryTarget(cfg)
-	primaryPool, err := db.Connect(ctx, primaryTarget, pw)
+	primaryConn, err := db.Connect(ctx, primaryTarget, pw)
 	if err != nil {
 		return err
 	}
-	defer primaryPool.Close()
+	defer primaryConn.Close(ctx)
 
 	// 2) Ensure publication on primary
-	pub := NewPublisher(primaryPool)
+	pub := NewPublisher(primaryConn)
 	if err := pub.EnsurePublication(ctx, cfg.Replication.PublicationName, cfg.Replication.Tables); err != nil {
 		return err
 	}
@@ -49,29 +48,20 @@ func EnsureLogicalReplication(ctx context.Context, cfg *config.Config) error {
 	// 4) For each replica: connect + create subscription + wait caught up
 	replicaTargets := dockerpg.ReplicaTargets(cfg)
 
-	// Defaults if verify not set
+	// Trust that config has applied defaults via ApplyDefaults()
 	poll := cfg.Replication.Verify.PollInterval.Duration
-	if poll == 0 {
-		poll = 500 * time.Millisecond
-	}
 	timeout := cfg.Replication.Verify.Timeout.Duration
-	if timeout == 0 {
-		timeout = 2 * time.Minute
-	}
-	strict := true
-	if cfg.Replication.Verify.StrictLSNMatch != nil {
-		strict = *cfg.Replication.Verify.StrictLSNMatch
-	}
+	strict := *cfg.Replication.Verify.StrictLSNMatch
 
 	for i, t := range replicaTargets {
-		replicaPool, err := db.Connect(ctx, t, pw)
+		replicaConn, err := db.Connect(ctx, t, pw)
 		if err != nil {
 			return fmt.Errorf("connect replica %d (%s): %w", i+1, t.Addr(), err)
 		}
 		func() {
-			defer replicaPool.Close()
+			defer replicaConn.Close(ctx)
 
-			sub := NewSubscriber(replicaPool)
+			sub := NewSubscriber(replicaConn)
 			subName := cfg.Replication.SubscriptionName(i)
 
 			if err := sub.EnsureSubscription(ctx, SubscriptionSpec{

@@ -18,3 +18,16 @@ func (t PGTarget) Addr() string {
 	return fmt.Sprintf("%s:%d", t.Host, t.Port)
 }
 
+// ConnInfo returns a libpq-style connection string for use in CREATE SUBSCRIPTION
+// or other PostgreSQL connection contexts.
+func (t PGTarget) ConnInfo(password string) string {
+	return fmt.Sprintf(
+		"host=%s port=%d dbname=%s user=%s password=%s",
+		t.Host,
+		t.Port,
+		t.Database,
+		t.User,
+		password,
+	)
+}
+

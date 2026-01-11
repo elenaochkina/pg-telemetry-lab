@@ -35,7 +35,7 @@ type Subscriber struct {
 // representing the primary (publisher) database.
 //
 // The caller is responsible for creating and managing the lifetime of
-// the underlying DB (e.g., a *pgxpool.Pool).
+// the underlying DB (e.g., a *pgx.Conn).
 func NewPublisher(db DB) *Publisher {
 	return &Publisher{db: db}
 }

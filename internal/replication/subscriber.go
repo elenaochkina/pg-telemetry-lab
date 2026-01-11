@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type SubscriptionSpec struct {
@@ -16,6 +18,7 @@ type SubscriptionSpec struct {
 	Enabled    bool
 }
 
+// EnsureSubscription creates a subscription if it doesn't already exist.
 func (s *Subscriber) EnsureSubscription(ctx context.Context, spec SubscriptionSpec) error {
 	spec.Name = strings.TrimSpace(spec.Name)
 	spec.Publication = strings.TrimSpace(spec.Publication)
@@ -41,9 +44,9 @@ func (s *Subscriber) EnsureSubscription(ctx context.Context, spec SubscriptionSp
 
 	stmt := fmt.Sprintf(
 		"CREATE SUBSCRIPTION %s CONNECTION %s PUBLICATION %s WITH (copy_data = %t, create_slot = %t, enabled = %t)",
-		quoteIdent(spec.Name),
-		quoteLiteral(spec.ConnString),
-		quoteIdent(spec.Publication),
+		pgx.Identifier{spec.Name}.Sanitize(),
+		sanitizeStringLiteral(spec.ConnString),
+		pgx.Identifier{spec.Publication}.Sanitize(),
 		spec.CopyData,
 		spec.CreateSlot,
 		spec.Enabled,
@@ -53,6 +56,11 @@ func (s *Subscriber) EnsureSubscription(ctx context.Context, spec SubscriptionSp
 		return fmt.Errorf("create subscription %q: %w", spec.Name, err)
 	}
 	return nil
+}
+
+// sanitizeStringLiteral safely quotes a SQL string literal.
+func sanitizeStringLiteral(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
 func (s *Subscriber) subscriptionExists(ctx context.Context, name string) (bool, error) {
