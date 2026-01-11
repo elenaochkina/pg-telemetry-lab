@@ -22,9 +22,9 @@ type ReplicationConfig struct {
 
 // VerifyConfig controls how we verify "caught up".
 type VerifyConfig struct {
-	PollInterval   Duration `yaml:"poll_interval"`      // e.g. "500ms"
-	Timeout        Duration `yaml:"timeout"`            // e.g. "2m"
-	StrictLSNMatch *bool    `yaml:"strict_lsn_match"`   // default true if omitted
+	PollInterval   Duration `yaml:"poll_interval"`    // e.g. "500ms"
+	Timeout        Duration `yaml:"timeout"`          // e.g. "2m"
+	StrictLSNMatch *bool    `yaml:"strict_lsn_match"` // default true if omitted
 }
 
 // Duration parses Go duration strings from YAML.

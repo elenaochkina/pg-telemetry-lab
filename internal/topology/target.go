@@ -30,4 +30,3 @@ func (t PGTarget) ConnInfo(password string) string {
 		password,
 	)
 }
-

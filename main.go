@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/elenaochkina/pg-telemetry-lab/cmd/telemetryctl"
 	"log"
 	"os"
-	"github.com/elenaochkina/pg-telemetry-lab/cmd/telemetryctl"
 )
 
 func main() {

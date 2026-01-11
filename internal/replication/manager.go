@@ -48,4 +48,3 @@ func NewPublisher(db DB) *Publisher {
 func NewSubscriber(db DB) *Subscriber {
 	return &Subscriber{db: db}
 }
-

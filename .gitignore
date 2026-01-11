@@ -2,6 +2,7 @@
 # Go build artifacts
 # ============================
 /telemetryctl
+/replicate-dev
 *.exe
 *.exe~
 *.dll

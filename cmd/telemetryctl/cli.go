@@ -44,7 +44,7 @@ func Run(args []string) error {
 
 	//Load config only for commands that need it
 	var cfg *config.Config
-	var err error	
+	var err error
 	if cmd == "provision" || cmd == "benchmark" {
 		cfg, err = config.Load(configPath)
 		if err != nil {

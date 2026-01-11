@@ -171,4 +171,3 @@ func main() {
 
 	fmt.Println("🎉 Logical replication is working end-to-end with pgbench tables.")
 }
-

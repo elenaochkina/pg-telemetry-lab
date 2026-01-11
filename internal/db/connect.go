@@ -64,4 +64,3 @@ func Connect(ctx context.Context, target topology.PGTarget, password string) (*p
 
 	return conn, nil
 }
-
