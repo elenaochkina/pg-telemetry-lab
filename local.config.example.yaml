@@ -15,3 +15,33 @@ postgres:
     count: 2
     base_port: 5540
     name_prefix: "pg-replica-"
+
+replication:
+  enabled: true
+
+  # Naming: publication on the primary, subscriptions on each replica.
+  publication_name: "pgbench_pub"
+  subscription_prefix: "pgbench_sub_"
+
+  # Explicit tables keeps this safe + predictable (and matches pgbench schema).
+  tables:
+    - "public.pgbench_accounts"
+    - "public.pgbench_branches"
+    - "public.pgbench_tellers"
+    - "public.pgbench_history"
+
+  # For your pgbench use case: avoid the initial COPY/table sync path that can stall.
+  copy_data: false
+
+  # Usually you want Postgres to manage the logical slot automatically.
+  create_slot: true
+
+  # Validation settings for "replication completed" checks.
+  verify:
+    poll_interval: "500ms"
+    timeout: "2m"
+    strict_lsn_match: true
+replica_identity:
+    default: "auto"   # auto | full
+    force_full_for:
+      - "public.pgbench_accounts"

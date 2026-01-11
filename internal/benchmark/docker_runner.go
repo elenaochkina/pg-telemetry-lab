@@ -43,7 +43,7 @@ func (r *DockerRunner) Init(opts PgBenchOptions) error {
 
 	if err != nil {
 		return fmt.Errorf("pgbench initialization failed: %w", err)
-	}	
+	}
 
 	fmt.Println("✅ Initialization complete.")
 	return nil
@@ -70,7 +70,7 @@ func (r *DockerRunner) Run(opts PgBenchOptions) error {
 
 	if err != nil {
 		return fmt.Errorf("pgbench run failed: %w", err)
-	}	
+	}
 
 	fmt.Println("✅ Benchmark run complete.")
 	return nil
@@ -82,7 +82,7 @@ func (r *DockerRunner) runPgbench(pgbenchArgs []string) (string, error) {
 	// Get password from environment (host-side).
 	pw, err := util.GetRequiredEnv("PG_PASSWORD")
 	if err != nil {
-		return "",  err
+		return "", err
 	}
 
 	// Build the full docker command arguments.
@@ -101,9 +101,9 @@ func (r *DockerRunner) runPgbench(pgbenchArgs []string) (string, error) {
 
 	fmt.Printf("Executing: docker %s\n", util.FormatArgs(printArgs))
 
- 	// Capture pgbench output (both stdout and stderr).
+	// Capture pgbench output (both stdout and stderr).
 	var out bytes.Buffer
-	
+
 	cmd := exec.Command("docker", dockerArgs...)
 	cmd.Stdout = &out
 	cmd.Stderr = &out // pgbench prints progress to stderr
@@ -126,4 +126,3 @@ func buildConnArgs(opts PgBenchOptions) []string {
 		opts.Database,
 	}
 }
-

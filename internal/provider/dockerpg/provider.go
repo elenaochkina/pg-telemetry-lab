@@ -82,7 +82,14 @@ func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
 		"-e", "POSTGRES_PASSWORD=" + pw,
 		"-e", "POSTGRES_DB=" + cfg.Postgres.Primary.Database,
 		"-p", fmt.Sprintf("%d:5432", cfg.Postgres.Primary.Port),
+
 		cfg.Postgres.Image,
+
+		// Override the default CMD and pass Postgres settings.
+		"postgres",
+		"-c", "wal_level=logical",
+		"-c", "max_wal_senders=10",
+		"-c", "max_replication_slots=10",
 	}
 
 	// Mask password when printing command
@@ -112,15 +119,15 @@ func (dp *DockerPostgresProvider) runReplica(cfg *config.Config, index int) erro
 	args := []string{
 		"run", "-d",
 		"--name", name,
-		"--network", cfg.Postgres.Network, 
+		"--network", cfg.Postgres.Network,
 		"-e", "POSTGRES_USER=" + cfg.Postgres.Primary.User,
-		"-e", "POSTGRES_PASSWORD=" + pw, 
+		"-e", "POSTGRES_PASSWORD=" + pw,
 		"-e", "POSTGRES_DB=" + cfg.Postgres.Primary.Database,
 		"-p", fmt.Sprintf("%d:5432", hostPort),
 		cfg.Postgres.Image,
 	}
 
-// TODO: configure this container as a real replica of the primary:
+	// TODO: configure this container as a real replica of the primary:
 	//   - enable wal_level and replication settings on the primary
 	//   - use pg_basebackup / primary_conninfo to clone data from primary
 	//   - create and use replication slots
@@ -166,5 +173,3 @@ func ensureNetwork(network string) error {
 	createCmd.Stderr = os.Stderr
 	return createCmd.Run()
 }
-
-

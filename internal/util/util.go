@@ -15,6 +15,9 @@ func MaskEnvArg(arg string) string {
 	if strings.HasPrefix(arg, "PGPASSWORD=") {
 		return "PG_PASSWORD=***"
 	}
+	if strings.HasPrefix(arg, "POSTGRES_PASSWORD=") {
+		return "POSTGRES_PASSWORD=***"
+	}
 
 	return arg
 }
@@ -37,21 +40,21 @@ func GetRequiredEnv(key string) (string, error) {
 	return value, nil
 }
 func FormatArgs(args []string) string {
-    var result string
-    for _, a := range args {
-        if ContainsWhitespace(a) {
-            result += fmt.Sprintf("'%s' ", a)
-        } else {
-            result += fmt.Sprintf("%s ", a)
-        }
-    }
-    return result
+	var result string
+	for _, a := range args {
+		if ContainsWhitespace(a) {
+			result += fmt.Sprintf("'%s' ", a)
+		} else {
+			result += fmt.Sprintf("%s ", a)
+		}
+	}
+	return result
 }
 func ContainsWhitespace(s string) bool {
-    for _, r := range s {
-        if r == ' ' || r == '\t' || r == '\n' {
-            return true
-        }
-    }
-    return false
+	for _, r := range s {
+		if r == ' ' || r == '\t' || r == '\n' {
+			return true
+		}
+	}
+	return false
 }

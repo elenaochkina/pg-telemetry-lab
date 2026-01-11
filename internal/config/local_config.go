@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"gopkg.in/yaml.v3"
-
 )
 
 // Config describes the structure of config.example.yaml.
@@ -17,12 +16,12 @@ type Config struct {
 		Image   string `yaml:"image"`
 		Network string `yaml:"network"`
 		Primary struct {
-			HostName     string `yaml:"name"`
+			HostName string `yaml:"name"`
 			Port     int    `yaml:"port"`
 			Database string `yaml:"database"`
 			User     string `yaml:"user"`
 			Password string `yaml:"-"` // do not read password from YAML, load from .env or secret management
-	
+
 		} `yaml:"primary"`
 
 		Replicas struct {
@@ -31,6 +30,7 @@ type Config struct {
 			NamePrefix string `yaml:"name_prefix"`
 		} `yaml:"replicas"`
 	} `yaml:"postgres"`
+	Replication ReplicationConfig `yaml:"replication"`
 }
 
 // Load reads a YAML config file from disk and unmarshals it into Config.
@@ -79,6 +79,11 @@ func (c *Config) Validate() error {
 		if c.Postgres.Replicas.NamePrefix == "" {
 			return fmt.Errorf("postgres.replicas.name_prefix must be set when replicas.count > 0")
 		}
+	}
+
+	// Replication validation + defaults
+	if err := c.Replication.Validate(c.Postgres.Replicas.Count); err != nil {
+		return err
 	}
 	return nil
 }

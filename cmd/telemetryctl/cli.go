@@ -44,7 +44,7 @@ func Run(args []string) error {
 
 	//Load config only for commands that need it
 	var cfg *config.Config
-	var err error	
+	var err error
 	if cmd == "provision" || cmd == "benchmark" {
 		cfg, err = config.Load(configPath)
 		if err != nil {
@@ -120,11 +120,14 @@ func handleBenchmark(target string, cfg *config.Config, duration, clients, scale
 			cfg.Postgres.Network,
 		)
 
+		// pgbench runs inside Docker, so use Docker network addressing
+		primaryTarget := dockerpg.PrimaryTargetFromDocker(cfg)
+
 		opts := benchmark.PgBenchOptions{
-			HostName:     cfg.Postgres.Primary.HostName,
-			Port:     cfg.Postgres.Primary.Port,
-			User:     cfg.Postgres.Primary.User,
-			Database: cfg.Postgres.Primary.Database,
+			HostName: primaryTarget.Host,
+			Port:     primaryTarget.Port,
+			User:     primaryTarget.User,
+			Database: primaryTarget.Database,
 
 			Duration: duration,
 			Clients:  clients,

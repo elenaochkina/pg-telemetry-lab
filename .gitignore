@@ -2,6 +2,7 @@
 # Go build artifacts
 # ============================
 /telemetryctl
+/replicate-dev
 *.exe
 *.exe~
 *.dll
@@ -26,6 +27,11 @@ go.sum.lock
 # Project runtime state
 # ============================
 .telemetry/
+
+# ============================
+# Documentation / Notes
+# ============================
+documents/
 
 # ============================
 # Editors / OS
