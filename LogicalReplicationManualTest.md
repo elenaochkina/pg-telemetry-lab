@@ -7,7 +7,7 @@ This document captures **all manual commands executed** to validate PostgreSQL *
 ## 1. Provision containers (via telemetryctl)
 
 ```bash
-./telemetryctl provision local --config local.config.example.yaml
+./telemetryctl provision local --config local.config.yaml
 ```
 
 This resulted in the following containers:

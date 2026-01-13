@@ -8,6 +8,32 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Publisher owns all logical replication operations that must be executed
+// on the *primary* (publisher) database.
+//
+// This includes responsibilities such as:
+//   - creating and validating publications
+//   - ensuring the correct tables are included in a publication
+//
+// Publisher does NOT know:
+//   - how the database connection was created
+//   - whether the database is running in Docker, cloud, or elsewhere
+//
+// It depends only on the DB interface, which allows the replication
+// package to remain testable and provider-agnostic.
+type Publisher struct {
+	db DB
+}
+
+// NewPublisher constructs a Publisher bound to a database connection
+// representing the primary (publisher) database.
+//
+// The caller is responsible for creating and managing the lifetime of
+// the underlying DB (e.g., a *pgx.Conn).
+func NewPublisher(db DB) *Publisher {
+	return &Publisher{db: db}
+}
+
 // EnsurePublication creates a publication if it doesn't exist, or adds missing tables to an existing one.
 //
 // Security Note on DDL and String Formatting:

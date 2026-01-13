@@ -37,16 +37,16 @@ This keeps all higher-level logic independent of Docker.
 
 A single helper creates real database connections:
 
-db.Connect(ctx, PGTarget, password) → *pgxpool.Pool
+db.Connect(ctx, PGTarget, password) → *pgx.Conn
 
 
 This is the only place that knows how to:
 
 build DSNs
 
-configure pooling
+verify connectivity with retries
 
-verify connectivity
+handle connection timeouts
 
 4. Replication Logic (database layer)
 
@@ -58,7 +58,7 @@ EnsureSubscription (subscriber)
 
 WaitUntilCaughtUp (verification via system catalogs)
 
-Replication code depends only on a small DB interface (Exec / Query / QueryRow), which is satisfied by *pgxpool.Pool. This makes the package testable and decoupled from connection details.
+Replication code depends only on a small DB interface (Exec / Query / QueryRow), which is satisfied by *pgx.Conn. This makes the package testable and decoupled from connection details.
 
 5. Why this design
 

@@ -38,7 +38,7 @@ go build -o telemetryctl .
 
 # Provision Local PostgreSQL Cluster
 ```bash
-./telemetryctl provision local --config local.config.example.yaml
+./telemetryctl provision local --config local.config.yaml
 ```
 
 # Verify network and containers:

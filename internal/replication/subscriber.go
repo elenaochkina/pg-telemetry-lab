@@ -8,6 +8,29 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Subscriber owns all logical replication operations that must be executed
+// on a *replica* (subscriber) database.
+//
+// This includes responsibilities such as:
+//   - creating and validating subscriptions
+//   - monitoring replication progress via system catalogs
+//   - determining when a subscription has fully caught up
+//
+// Like Publisher, Subscriber depends only on the DB interface and is
+// intentionally unaware of connection details or infrastructure.
+type Subscriber struct {
+	db DB
+}
+
+// NewSubscriber constructs a Subscriber bound to a database connection
+// representing a replica (subscriber) database.
+//
+// The same Subscriber logic can be reused for any number of replicas by
+// providing different DB implementations.
+func NewSubscriber(db DB) *Subscriber {
+	return &Subscriber{db: db}
+}
+
 type SubscriptionSpec struct {
 	Name        string
 	ConnString  string // points to publisher
