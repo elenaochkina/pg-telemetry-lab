@@ -82,7 +82,14 @@ func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
 		"-e", "POSTGRES_PASSWORD=" + pw,
 		"-e", "POSTGRES_DB=" + cfg.Postgres.Primary.Database,
 		"-p", fmt.Sprintf("%d:5432", cfg.Postgres.Primary.Port),
+
 		cfg.Postgres.Image,
+
+		// Override the default CMD and pass Postgres settings.
+		"postgres",
+		"-c", "wal_level=logical",
+		"-c", "max_wal_senders=10",
+		"-c", "max_replication_slots=10",
 	}
 
 	// Mask password when printing command

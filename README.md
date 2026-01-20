@@ -33,12 +33,12 @@ Supported commands:
 ### Build the CLI
 
 ```bash
-go build -o telemetryctl ./cmd/telemetryctl
+go build -o telemetryctl .
 ```
 
 # Provision Local PostgreSQL Cluster
 ```bash
-./telemetryctl provision local --config local.config.example.yaml
+./telemetryctl provision local --config local.config.yaml
 ```
 
 # Verify network and containers:

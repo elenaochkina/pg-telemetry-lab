@@ -29,8 +29,10 @@ type Config struct {
 			Count      int    `yaml:"count"`
 			BasePort   int    `yaml:"base_port"`
 			NamePrefix string `yaml:"name_prefix"`
-		} `yaml:"replicas"`
+		} `yaml:"replicas"`	
+
 	} `yaml:"postgres"`
+	Replication ReplicationConfig `yaml:"replication"`
 }
 
 // Load reads a YAML config file from disk and unmarshals it into Config.
@@ -79,6 +81,11 @@ func (c *Config) Validate() error {
 		if c.Postgres.Replicas.NamePrefix == "" {
 			return fmt.Errorf("postgres.replicas.name_prefix must be set when replicas.count > 0")
 		}
+	}
+	
+	// Replication validation + defaults
+	if err := c.Replication.Validate(c.Postgres.Replicas.Count); err != nil {
+		return err
 	}
 	return nil
 }
