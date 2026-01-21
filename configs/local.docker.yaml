@@ -1,4 +1,5 @@
 version: 1
+provider: docker
 environment: "local"
 
 postgres:
@@ -41,7 +42,8 @@ replication:
     poll_interval: "500ms"
     timeout: "2m"
     strict_lsn_match: true
-replica_identity:
+
+  replica_identity:
     default: "auto"   # auto | full
     force_full_for:
       - "public.pgbench_accounts"
