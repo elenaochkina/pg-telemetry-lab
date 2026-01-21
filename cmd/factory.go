@@ -8,6 +8,8 @@ import (
 	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/provider"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/provider/dockerpg"
+	dockerbenchmark "github.com/elenaochkina/pg-telemetry-lab/internal/provider/dockerpg/benchmark"
+	dockerreplication "github.com/elenaochkina/pg-telemetry-lab/internal/provider/dockerpg/replication"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/replication"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/topology"
 )
@@ -33,7 +35,7 @@ func createProvider(cfg *config.Config) (provider.PostgresProvider, error) {
 func createBenchmarkRunner(cfg *config.Config) (benchmark.Runner, error) {
 	switch cfg.Provider {
 	case "docker":
-		return benchmark.NewDockerRunner(cfg.Postgres.Image, cfg.Postgres.Network), nil
+		return dockerbenchmark.NewDockerRunner(cfg.Postgres.Image, cfg.Postgres.Network), nil
 	case "aws":
 		return nil, fmt.Errorf("AWS benchmark runner not yet implemented")
 	default:
@@ -65,7 +67,7 @@ func createReplicationSetup(
 ) (replication.SetupOptions, error) {
 	switch cfg.Provider {
 	case "docker":
-		return createDockerReplicationSetup(cfg, password, ctx, initSchema, verify), nil
+		return dockerreplication.CreateSetupOptions(cfg, password, ctx, initSchema, verify), nil
 	case "aws":
 		return replication.SetupOptions{}, fmt.Errorf("AWS provider not yet implemented")
 	default:
@@ -73,43 +75,4 @@ func createReplicationSetup(
 	}
 }
 
-// createDockerReplicationSetup creates Docker-specific replication setup options.
-// This is where all Docker-specific objects are created and assembled.
-func createDockerReplicationSetup(
-	cfg *config.Config,
-	password string,
-	ctx context.Context,
-	initSchema bool,
-	verify bool,
-) replication.SetupOptions {
-	// Create Docker provider
-	provider := dockerpg.NewDockerPostgresProvider()
-
-	// Create Docker benchmark runner
-	runner := benchmark.NewDockerRunner(cfg.Postgres.Image, cfg.Postgres.Network)
-
-	// Get Docker topology
-	primaryHost := dockerpg.PrimaryTarget(cfg)
-	replicasHost := dockerpg.ReplicaTargets(cfg)
-	primaryInternal := dockerpg.PrimaryTargetFromDocker(cfg)
-	replicasInternal := dockerpg.ReplicaTargetsFromDocker(cfg)
-	publisherConnInfo := dockerpg.PublisherConnInfo(cfg, cfg.Postgres.Primary.User, password)
-
-	return replication.SetupOptions{
-		Config:                 cfg,
-		Password:               password,
-		Provider:               provider,
-		BenchmarkRunner:        runner,
-		PrimaryTargetHost:      primaryHost,
-		ReplicaTargetsHost:     replicasHost,
-		PrimaryTargetInternal:  primaryInternal,
-		ReplicaTargetsInternal: replicasInternal,
-		PublisherConnInfo:      publisherConnInfo,
-		InitSchema:             initSchema,
-		Verify:                 verify,
-		Context:                ctx,
-	}
-}
-
-// Future: createAWSReplicationSetup would go here
-// func createAWSReplicationSetup(...) replication.SetupOptions { ... }
+// Future: AWS provider setup would be in internal/provider/awspg/replication/setup.go

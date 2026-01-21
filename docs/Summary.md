@@ -6,7 +6,7 @@ This document explains the architecture of pg-telemetry-lab, focusing on provide
 
 ## Design Principles
 
-The project separates infrastructure provisioning, connection topology, and database replication logic to keep the system **provider-agnostic** and easy to extend beyond local Docker to cloud providers (AWS, GCP).
+The project separates infrastructure provisioning, connection topology, and database replication logic to keep the system **provider-agnostic** and easy to extend beyond local Docker to cloud providers (AWS).
 
 ---
 
@@ -63,14 +63,14 @@ func handleReplicationSetup(args []string) error {
 func createReplicationSetup(cfg *config.Config, ...) (SetupOptions, error) {
     switch cfg.Provider {
     case "docker":
-        return createDockerSetup(cfg, ...)
+        return dockerreplication.CreateSetupOptions(cfg, ...)
     case "aws":
-        return createAWSSetup(cfg, ...)
+        return awsreplication.CreateSetupOptions(cfg, ...)
     }
 }
 ```
 
-The factory reads the `provider` field from config and creates the appropriate implementation (Docker or AWS). Controllers never know which provider they're using - they just call the factory.
+The factory reads the `provider` field from config and delegates to provider-specific packages. Controllers never know which provider they're using - they just call the factory, which returns a `SetupOptions` struct with all dependencies assembled.
 
 ---
 
@@ -138,7 +138,11 @@ internal/provider/
     ├── provider.go       # Docker implementation
     ├── state.go          # State management
     ├── targets.go        # Connection topology
-    └── conninfo.go       # Connection strings
+    ├── conninfo.go       # Connection strings
+    ├── benchmark/
+    │   └── runner.go     # Docker-specific benchmark runner
+    └── replication/
+        └── setup.go      # Docker-specific replication setup
 ```
 
 **Provider Interface:**
@@ -153,13 +157,17 @@ type PostgresProvider interface {
 - Creates Docker containers
 - Manages Docker networks
 - Stores state in `.telemetry/local-state.json`
+- Provides Docker-specific benchmark runner (runs pgbench in containers)
+- Provides Docker-specific replication setup (assembles Docker topology)
 
 **Future AWS Implementation:**
 - Creates RDS instances
 - Manages VPCs and security groups
 - Uses AWS SDK
+- Provides AWS-specific benchmark runner (runs pgbench on EC2)
+- Provides AWS-specific replication setup (assembles RDS topology)
 
-**Key Principle:** Providers only handle lifecycle - they don't know about replication or benchmarks.
+**Key Principle:** Each provider owns all its infrastructure code, including how to run benchmarks and set up replication for that specific provider.
 
 ---
 
@@ -227,7 +235,48 @@ db.Connect(ctx, PGTarget, password) → *pgx.Conn
 
 ---
 
-### 6. Replication Logic (SQL Layer)
+### 6. Benchmark Layer
+
+**Location:** `internal/benchmark/`
+
+The benchmark layer provides a **provider-agnostic** interface for running pgbench benchmarks:
+
+```
+internal/benchmark/
+└── runner.go        # Runner interface + PgBenchOptions (provider-agnostic)
+```
+
+**Runner Interface:**
+```go
+type Runner interface {
+    Init(opts PgBenchOptions) error  // Initialize pgbench schema
+    Run(opts PgBenchOptions) error   // Run benchmark workload
+}
+```
+
+**PgBenchOptions:**
+```go
+type PgBenchOptions struct {
+    HostName string  // Database host to connect to
+    Port     int     // Database port
+    User     string  // PostgreSQL user
+    Database string  // Database name
+    Duration int     // Benchmark duration (seconds)
+    Clients  int     // Number of concurrent clients
+    Scale    int     // Dataset size
+    Progress int     // Progress interval
+}
+```
+
+**Provider Implementations:**
+- **Docker**: `internal/provider/dockerpg/benchmark/runner.go` - Runs pgbench in Docker containers
+- **AWS** (future): `internal/provider/awspg/benchmark/runner.go` - Runs pgbench on EC2 instances
+
+**Key Feature:** The interface accepts only `PgBenchOptions` (provider-agnostic), while each implementation handles provider-specific details internally (Docker image/network, AWS region/subnet, etc.).
+
+---
+
+### 7. Replication Logic (SQL Layer)
 
 **Location:** `internal/replication/`
 
@@ -270,8 +319,13 @@ This interface is satisfied by `*pgx.Conn`, making the package:
 3. Factory (factory.go)
    ↓ createReplicationSetup(cfg)
    ↓ switch cfg.Provider:
-   ↓   case "docker": createDockerSetup()
-   ↓   case "aws":    createAWSSetup()
+   ↓   case "docker": dockerreplication.CreateSetupOptions()
+   ↓   case "aws":    awsreplication.CreateSetupOptions()
+   ↓
+   ↓ Docker-specific setup (dockerpg/replication/setup.go):
+   ↓   - Creates DockerProvider
+   ↓   - Creates DockerRunner (from dockerpg/benchmark)
+   ↓   - Builds Docker topology (PrimaryTarget, ReplicaTargets)
    ↓
    ↓ Returns SetupOptions{
    ↓   Provider: DockerProvider,
@@ -357,20 +411,45 @@ func (p *AWSProvider) ProvisionPostgres(cfg) { ... }
 func (p *AWSProvider) DestroyPostgres() { ... }
 ```
 
-**2. Add Factory Function**
-```go
-// cmd/factory.go
-case "aws":
-    return createAWSSetup(cfg, ...)
-```
-
-**3. Create Topology Functions**
+**2. Create Topology Functions**
 ```go
 // internal/provider/awspg/targets.go
 func PrimaryTarget(cfg) topology.PGTarget { ... }
+func ReplicaTargets(cfg) []topology.PGTarget { ... }
 ```
 
-**4. Add Config Fields**
+**3. Create Benchmark Runner**
+```go
+// internal/provider/awspg/benchmark/runner.go
+type AWSRunner struct {
+    Region       string
+    SubnetID     string
+    InstanceType string
+}
+func (r *AWSRunner) Init(opts benchmark.PgBenchOptions) error { ... }
+func (r *AWSRunner) Run(opts benchmark.PgBenchOptions) error { ... }
+```
+
+**4. Create Replication Setup**
+```go
+// internal/provider/awspg/replication/setup.go
+func CreateSetupOptions(cfg, password, ctx, initSchema, verify) replication.SetupOptions {
+    // Assemble AWS-specific dependencies
+    provider := awspg.NewAWSProvider()
+    runner := awsbenchmark.NewAWSRunner(...)
+    // Build RDS topology
+    return replication.SetupOptions{ ... }
+}
+```
+
+**5. Update Factory**
+```go
+// cmd/factory.go
+case "aws":
+    return awsreplication.CreateSetupOptions(cfg, ...)
+```
+
+**6. Add Config Fields**
 ```yaml
 # configs/production.aws.yaml
 provider: aws
@@ -383,6 +462,7 @@ postgres:
 - ❌ Service layer (`internal/replication/`)
 - ❌ Controllers (`cmd/handlers.go`)
 - ❌ SQL logic
+- ❌ Benchmark interface (`internal/benchmark/`)
 
 ---
 
