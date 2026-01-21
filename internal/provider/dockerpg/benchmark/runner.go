@@ -14,13 +14,15 @@ import (
 type DockerRunner struct {
 	Image   string
 	Network string
+	CPU     float64 // CPU limit for pgbench container (e.g., 1.0)
 }
 
 // NewDockerRunner creates a Docker-based pgbench runner.
-func NewDockerRunner(image, network string) *DockerRunner {
+func NewDockerRunner(image, network string, cpu float64) *DockerRunner {
 	return &DockerRunner{
 		Image:   image,
 		Network: network,
+		CPU:     cpu,
 	}
 }
 
@@ -91,10 +93,18 @@ func (r *DockerRunner) runPgbench(pgbenchArgs []string) (string, error) {
 		"run",
 		"--rm",
 		"--network", r.Network,
-		"-e", "PGPASSWORD=" + pw, // inside container, pgbench reads PGPASSWORD
+	}
+
+	// Add CPU limit if specified
+	if r.CPU > 0 {
+		dockerArgs = append(dockerArgs, "--cpus", fmt.Sprintf("%.1f", r.CPU))
+	}
+
+	dockerArgs = append(dockerArgs,
+		"-e", "PGPASSWORD="+pw, // inside container, pgbench reads PGPASSWORD
 		"--entrypoint", "pgbench", // override default entrypoint
 		r.Image,
-	}
+	)
 	dockerArgs = append(dockerArgs, pgbenchArgs...)
 
 	// Mask sensitive env vars for printing.

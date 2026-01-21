@@ -19,6 +19,13 @@ type Config struct {
 		Image   string `yaml:"image,omitempty"`
 		Network string `yaml:"network,omitempty"`
 
+		// Docker resource limits
+		Resources struct {
+			PrimaryCPU  float64 `yaml:"primary_cpu,omitempty"`   // CPU limit for primary (e.g., 2.0)
+			ReplicaCPU  float64 `yaml:"replica_cpu,omitempty"`   // CPU limit per replica (e.g., 0.5)
+			BenchmarkCPU float64 `yaml:"benchmark_cpu,omitempty"` // CPU limit for pgbench container (e.g., 1.0)
+		} `yaml:"resources,omitempty"`
+
 		// AWS-specific fields
 		Region           string   `yaml:"region,omitempty"`
 		InstanceClass    string   `yaml:"instance_class,omitempty"`

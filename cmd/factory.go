@@ -35,7 +35,11 @@ func createProvider(cfg *config.Config) (provider.PostgresProvider, error) {
 func createBenchmarkRunner(cfg *config.Config) (benchmark.Runner, error) {
 	switch cfg.Provider {
 	case "docker":
-		return dockerbenchmark.NewDockerRunner(cfg.Postgres.Image, cfg.Postgres.Network), nil
+		return dockerbenchmark.NewDockerRunner(
+			cfg.Postgres.Image,
+			cfg.Postgres.Network,
+			cfg.Postgres.Resources.BenchmarkCPU,
+		), nil
 	case "aws":
 		return nil, fmt.Errorf("AWS benchmark runner not yet implemented")
 	default:

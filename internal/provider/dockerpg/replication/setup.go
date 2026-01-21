@@ -24,7 +24,11 @@ func CreateSetupOptions(
 	provider := dockerpg.NewDockerPostgresProvider()
 
 	// Create Docker benchmark runner
-	runner := dockerbenchmark.NewDockerRunner(cfg.Postgres.Image, cfg.Postgres.Network)
+	runner := dockerbenchmark.NewDockerRunner(
+		cfg.Postgres.Image,
+		cfg.Postgres.Network,
+		cfg.Postgres.Resources.BenchmarkCPU,
+	)
 
 	// Get Docker topology
 	primaryHost := dockerpg.PrimaryTarget(cfg)

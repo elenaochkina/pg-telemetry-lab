@@ -78,9 +78,17 @@ func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
 		"run", "-d",
 		"--name", cfg.Postgres.Primary.HostName,
 		"--network", cfg.Postgres.Network,
-		"-e", "POSTGRES_USER=" + cfg.Postgres.Primary.User,
-		"-e", "POSTGRES_PASSWORD=" + pw,
-		"-e", "POSTGRES_DB=" + cfg.Postgres.Primary.Database,
+	}
+
+	// Add CPU limit if specified
+	if cfg.Postgres.Resources.PrimaryCPU > 0 {
+		args = append(args, "--cpus", fmt.Sprintf("%.1f", cfg.Postgres.Resources.PrimaryCPU))
+	}
+
+	args = append(args,
+		"-e", "POSTGRES_USER="+cfg.Postgres.Primary.User,
+		"-e", "POSTGRES_PASSWORD="+pw,
+		"-e", "POSTGRES_DB="+cfg.Postgres.Primary.Database,
 		"-p", fmt.Sprintf("%d:5432", cfg.Postgres.Primary.Port),
 
 		cfg.Postgres.Image,
@@ -90,7 +98,7 @@ func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
 		"-c", "wal_level=logical",
 		"-c", "max_wal_senders=10",
 		"-c", "max_replication_slots=10",
-	}
+	)
 
 	// Mask password when printing command
 	printArgs := util.MaskArgs(args)
@@ -119,13 +127,21 @@ func (dp *DockerPostgresProvider) runReplica(cfg *config.Config, index int) erro
 	args := []string{
 		"run", "-d",
 		"--name", name,
-		"--network", cfg.Postgres.Network, 
-		"-e", "POSTGRES_USER=" + cfg.Postgres.Primary.User,
-		"-e", "POSTGRES_PASSWORD=" + pw, 
-		"-e", "POSTGRES_DB=" + cfg.Postgres.Primary.Database,
+		"--network", cfg.Postgres.Network,
+	}
+
+	// Add CPU limit if specified
+	if cfg.Postgres.Resources.ReplicaCPU > 0 {
+		args = append(args, "--cpus", fmt.Sprintf("%.1f", cfg.Postgres.Resources.ReplicaCPU))
+	}
+
+	args = append(args,
+		"-e", "POSTGRES_USER="+cfg.Postgres.Primary.User,
+		"-e", "POSTGRES_PASSWORD="+pw,
+		"-e", "POSTGRES_DB="+cfg.Postgres.Primary.Database,
 		"-p", fmt.Sprintf("%d:5432", hostPort),
 		cfg.Postgres.Image,
-	}
+	)
 
 // TODO: configure this container as a real replica of the primary:
 	//   - enable wal_level and replication settings on the primary
