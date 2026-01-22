@@ -1,9 +1,16 @@
 version: 1
+provider: docker
 environment: "local"
 
 postgres:
   image: "postgres:16"
   network: "pgnet"
+
+  # Docker resource limits (CPU allocation)
+  resources:
+    primary_cpu: 2.0    # Primary gets 2 CPUs
+    replica_cpu: 0.5    # Each replica gets 0.5 CPUs
+    benchmark_cpu: 1.0  # pgbench client gets 1 CPU
 
   primary:
     name: "pg-primary"
@@ -41,7 +48,8 @@ replication:
     poll_interval: "500ms"
     timeout: "2m"
     strict_lsn_match: true
-replica_identity:
+
+  replica_identity:
     default: "auto"   # auto | full
     force_full_for:
       - "public.pgbench_accounts"

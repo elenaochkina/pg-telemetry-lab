@@ -4,7 +4,8 @@ package benchmark
 // a pgbench benchmark run (both initialization and workload phases).
 // These options are passed to a Runner implementation which executes
 // pgbench either locally or inside a Docker container.
-type PgBenchOptions struct {
+type 
+PgBenchOptions struct {
 
     // Name is the hostname or container name of the PostgreSQL instance
     // pgbench should connect to. Example: "pg-primary".

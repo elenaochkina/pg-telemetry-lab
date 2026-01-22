@@ -49,14 +49,20 @@ func ReplicaTargets(cfg *config.Config) []topology.PGTarget {
 	return out
 }
 
-// ReplicaTargetFromDocker returns how to connect to a specific replica from inside a Docker container.
-// (Docker-specific assumption: containers connect via Docker DNS name + container port 5432.)
-func ReplicaTargetFromDocker(cfg *config.Config, index int) topology.PGTarget {
-	return topology.PGTarget{
-		Label:    fmt.Sprintf("replica-%d", index+1),
-		Host:     fmt.Sprintf("%s%d", cfg.Postgres.Replicas.NamePrefix, index+1), // e.g., "pg-replica-1"
-		Port:     5432, // Internal container port
-		Database: cfg.Postgres.Primary.Database,
-		User:     cfg.Postgres.Primary.User,
+// ReplicaTargetsFromDocker returns how to connect to all replicas from inside a Docker container.
+// (Docker-specific assumption: containers connect via Docker DNS names + container port 5432.)
+func ReplicaTargetsFromDocker(cfg *config.Config) []topology.PGTarget {
+	n := cfg.Postgres.Replicas.Count
+	out := make([]topology.PGTarget, 0, n)
+
+	for i := 0; i < n; i++ {
+		out = append(out, topology.PGTarget{
+			Label:    fmt.Sprintf("replica-%d", i+1),
+			Host:     fmt.Sprintf("%s%d", cfg.Postgres.Replicas.NamePrefix, i+1), // e.g., "pg-replica-1"
+			Port:     5432, // Internal container port
+			Database: cfg.Postgres.Primary.Database,
+			User:     cfg.Postgres.Primary.User,
+		})
 	}
+	return out
 }
