@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/elenaochkina/pg-telemetry-lab/internal/benchmark"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
@@ -101,6 +103,11 @@ func handleBenchmark(args []string) error {
 	scale := fs.Int("scale", 1, "pgbench scale factor (dataset size)")
 	progress := fs.Int("progress", 5, "progress interval in seconds (0 = disabled)")
 
+	// Telemetry flags
+	collectTelemetry := fs.Bool("collect-telemetry", false, "collect telemetry metrics during benchmark")
+	telemetryInterval := fs.Duration("telemetry-interval", 5*time.Second, "telemetry collection interval")
+	telemetryOutput := fs.String("telemetry-output", "", "telemetry output file (default: benchmark-metrics.jsonl)")
+
 	if err := fs.Parse(args[1:]); err != nil {
 		return fmt.Errorf("parsing flags: %w", err)
 	}
@@ -116,8 +123,9 @@ func handleBenchmark(args []string) error {
 		return fmt.Errorf("unsupported target: %s (only 'local' supported)", target)
 	}
 
-	// Verify PG_PASSWORD is set (benchmark runner reads it from environment)
-	if _, err := util.GetRequiredEnv("PG_PASSWORD"); err != nil {
+	// Get password from environment
+	password, err := util.GetRequiredEnv("PG_PASSWORD")
+	if err != nil {
 		return err
 	}
 
@@ -143,6 +151,27 @@ func handleBenchmark(args []string) error {
 		Scale:    *scale,
 	}); err != nil {
 		return fmt.Errorf("initialize pgbench: %w", err)
+	}
+
+	// Start telemetry collection if requested
+	var telemetryCancel context.CancelFunc
+	if *collectTelemetry {
+		// Set default output file if not specified
+		outputFile := *telemetryOutput
+		if outputFile == "" {
+			outputFile = "benchmark-metrics.jsonl"
+		}
+
+		// Start telemetry in background
+		telemetryCancel = startBackgroundTelemetry(cfg, password, *telemetryInterval, outputFile)
+		defer func() {
+			if telemetryCancel != nil {
+				fmt.Println("🛑 Stopping telemetry collection...")
+				telemetryCancel()
+				time.Sleep(500 * time.Millisecond) // Allow graceful shutdown
+				fmt.Println("✅ Telemetry collection stopped")
+			}
+		}()
 	}
 
 	// Run benchmark

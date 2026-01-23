@@ -10,7 +10,9 @@ import (
 	"github.com/elenaochkina/pg-telemetry-lab/internal/provider/dockerpg"
 	dockerbenchmark "github.com/elenaochkina/pg-telemetry-lab/internal/provider/dockerpg/benchmark"
 	dockerreplication "github.com/elenaochkina/pg-telemetry-lab/internal/provider/dockerpg/replication"
+	dockertelemetry "github.com/elenaochkina/pg-telemetry-lab/internal/provider/dockerpg/telemetry"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/replication"
+	"github.com/elenaochkina/pg-telemetry-lab/internal/telemetry"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/topology"
 )
 
@@ -76,6 +78,19 @@ func createReplicationSetup(
 		return replication.SetupOptions{}, fmt.Errorf("AWS provider not yet implemented")
 	default:
 		return replication.SetupOptions{}, fmt.Errorf("unsupported provider: %s", cfg.Provider)
+	}
+}
+
+// createTelemetryCollector creates the appropriate telemetry.Collector implementation
+// based on the provider field in the config.
+func createTelemetryCollector(cfg *config.Config, password string) (telemetry.Collector, error) {
+	switch cfg.Provider {
+	case "docker":
+		return dockertelemetry.NewDockerCollector(cfg, password), nil
+	case "aws":
+		return nil, fmt.Errorf("AWS telemetry collector not yet implemented")
+	default:
+		return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 	}
 }
 
