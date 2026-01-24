@@ -106,7 +106,8 @@ func handleBenchmark(args []string) error {
 	// Telemetry flags
 	collectTelemetry := fs.Bool("collect-telemetry", false, "collect telemetry metrics during benchmark")
 	telemetryInterval := fs.Duration("telemetry-interval", 5*time.Second, "telemetry collection interval")
-	telemetryOutput := fs.String("telemetry-output", "", "telemetry output file (default: benchmark-metrics.jsonl)")
+	telemetryWriter := fs.String("telemetry-writer", "json", "telemetry writer: json, grafana")
+	telemetryOutput := fs.String("telemetry-output", "", "telemetry output file (only for json writer, default: benchmark-metrics.jsonl)")
 
 	if err := fs.Parse(args[1:]); err != nil {
 		return fmt.Errorf("parsing flags: %w", err)
@@ -156,14 +157,14 @@ func handleBenchmark(args []string) error {
 	// Start telemetry collection if requested
 	var telemetryCancel context.CancelFunc
 	if *collectTelemetry {
-		// Set default output file if not specified
+		// Set default output file if not specified (only for json writer)
 		outputFile := *telemetryOutput
-		if outputFile == "" {
+		if outputFile == "" && *telemetryWriter == "json" {
 			outputFile = "benchmark-metrics.jsonl"
 		}
 
 		// Start telemetry in background
-		telemetryCancel = startBackgroundTelemetry(cfg, password, *telemetryInterval, outputFile)
+		telemetryCancel = startBackgroundTelemetry(cfg, password, *telemetryInterval, *telemetryWriter, outputFile)
 		defer func() {
 			if telemetryCancel != nil {
 				fmt.Println("🛑 Stopping telemetry collection...")
