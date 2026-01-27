@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/telemetry"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/telemetry/writer"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/util"
@@ -38,7 +37,6 @@ func handleTelemetry(args []string) error {
 func handleTelemetryCollect(args []string) error {
 	// Parse flags
 	fs := flag.NewFlagSet("telemetry collect", flag.ContinueOnError)
-	configPath := fs.String("config", "configs/local.docker.yaml", "path to config file")
 	writerType := fs.String("writer", "json", "metrics writer type: json, grafana")
 	pretty := fs.Bool("pretty", true, "pretty-print JSON output (only for json writer, default true)")
 	interval := fs.Duration("interval", 0, "polling interval (e.g., 5s, 1m). If not set, collect once and exit")
@@ -49,12 +47,6 @@ func handleTelemetryCollect(args []string) error {
 		return fmt.Errorf("parsing flags: %w", err)
 	}
 
-	// Load config
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		return fmt.Errorf("load config: %w", err)
-	}
-
 	// Get password from environment
 	password, err := util.GetRequiredEnv("PG_PASSWORD")
 	if err != nil {
@@ -62,7 +54,7 @@ func handleTelemetryCollect(args []string) error {
 	}
 
 	// Create telemetry collector via factory
-	collector, err := createTelemetryCollector(cfg, password)
+	collector, err := createTelemetryCollector(password)
 	if err != nil {
 		return fmt.Errorf("create telemetry collector: %w", err)
 	}
@@ -73,7 +65,7 @@ func handleTelemetryCollect(args []string) error {
 	case "json":
 		metricsWriter, err = createMetricsWriter(*output, *pretty)
 	case "grafana":
-		metricsWriter, err = createGrafanaWriter(cfg)
+		metricsWriter, err = createGrafanaWriter()
 	default:
 		return fmt.Errorf("unknown writer type: %s (supported: json, grafana)", *writerType)
 	}
@@ -162,7 +154,8 @@ func createMetricsWriter(outputPath string, pretty bool) (telemetry.MetricsWrite
 }
 
 // createGrafanaWriter creates a Prometheus writer for Grafana Cloud.
-func createGrafanaWriter(cfg *config.Config) (telemetry.MetricsWriter, error) {
+// Configuration comes from environment variables, making it provider-agnostic.
+func createGrafanaWriter() (telemetry.MetricsWriter, error) {
 	// Get required environment variables
 	endpoint := os.Getenv("GRAFANA_CLOUD_ENDPOINT")
 	if endpoint == "" {
@@ -179,11 +172,26 @@ func createGrafanaWriter(cfg *config.Config) (telemetry.MetricsWriter, error) {
 		return nil, fmt.Errorf("GRAFANA_CLOUD_API_KEY environment variable not set")
 	}
 
-	// Create global labels for all metrics
+	// Create global labels for all metrics from environment variables
+	cluster := os.Getenv("TELEMETRY_CLUSTER")
+	if cluster == "" {
+		cluster = "pg-telemetry-lab" // Default
+	}
+
+	environment := os.Getenv("TELEMETRY_ENVIRONMENT")
+	if environment == "" {
+		environment = "dev" // Default
+	}
+
+	provider := os.Getenv("TELEMETRY_PROVIDER")
+	if provider == "" {
+		provider = "unknown" // Optional field
+	}
+
 	labels := map[string]string{
-		"cluster":     "pg-telemetry-lab",
-		"environment": "dev",
-		"provider":    cfg.Provider,
+		"cluster":     cluster,
+		"environment": environment,
+		"provider":    provider,
 	}
 
 	fmt.Printf("📊 Grafana Cloud writer configured (endpoint: %s)\n", endpoint)
@@ -193,9 +201,9 @@ func createGrafanaWriter(cfg *config.Config) (telemetry.MetricsWriter, error) {
 
 // startBackgroundTelemetry starts telemetry collection in a background goroutine.
 // Returns a cancel function that should be called to stop collection.
-func startBackgroundTelemetry(cfg *config.Config, password string, interval time.Duration, writerType, outputFile string) context.CancelFunc {
+func startBackgroundTelemetry(password string, interval time.Duration, writerType, outputFile string) context.CancelFunc {
 	// Create telemetry collector
-	collector, err := createTelemetryCollector(cfg, password)
+	collector, err := createTelemetryCollector(password)
 	if err != nil {
 		fmt.Printf("Error creating telemetry collector: %v\n", err)
 		return func() {} // Return no-op cancel function
@@ -207,7 +215,7 @@ func startBackgroundTelemetry(cfg *config.Config, password string, interval time
 	case "json":
 		metricsWriter, err = createMetricsWriter(outputFile, false)
 	case "grafana":
-		metricsWriter, err = createGrafanaWriter(cfg)
+		metricsWriter, err = createGrafanaWriter()
 	default:
 		fmt.Printf("Error: unknown writer type: %s\n", writerType)
 		return func() {} // Return no-op cancel function
@@ -249,12 +257,30 @@ Usage:
   telemetryctl telemetry collect [flags]
 
 Flags:
-  --config string     Path to config file (default "configs/local.docker.yaml")
   --writer string     Metrics writer: json, grafana (default "json")
   --pretty bool       Pretty-print JSON output (only for json writer, default true)
   --interval duration Polling interval (e.g., 5s, 1m). If not set, collect once and exit
   --duration duration How long to collect metrics (e.g., 30s, 1m). If not set, run forever
   --output string     Output file path (only for json writer, default: stdout)
+
+Environment Variables Required:
+  PG_PASSWORD              PostgreSQL password
+  PG_PRIMARY_HOST          Primary database host
+  PG_PRIMARY_PORT          Primary database port (default: 5432)
+  PG_PRIMARY_DATABASE      Primary database name (default: postgres)
+  PG_PRIMARY_USER          Primary database user (default: postgres)
+  PG_REPLICA_HOSTS         Comma-separated replica hosts (optional)
+  PG_REPLICA_PORTS         Comma-separated replica ports (optional)
+  PG_REPLICA_DATABASE      Replica database name (default: postgres)
+  PG_REPLICA_USER          Replica database user (default: postgres)
+
+  For Grafana Cloud writer:
+  GRAFANA_CLOUD_ENDPOINT   Grafana Cloud Prometheus endpoint
+  GRAFANA_CLOUD_USER       Grafana Cloud username
+  GRAFANA_CLOUD_API_KEY    Grafana Cloud API key
+  TELEMETRY_CLUSTER        Cluster label (default: pg-telemetry-lab)
+  TELEMETRY_ENVIRONMENT    Environment label (default: dev)
+  TELEMETRY_PROVIDER       Provider label (optional)
 
 Examples:
   # Collect once and print to stdout
@@ -269,7 +295,7 @@ Examples:
   # Push to Grafana Cloud for 2 minutes
   telemetryctl telemetry collect --writer grafana --interval 5s --duration 2m
 
-Note: Grafana writer requires GRAFANA_CLOUD_ENDPOINT, GRAFANA_CLOUD_USER,
-      and GRAFANA_CLOUD_API_KEY environment variables (loaded from .env)
+Note: All environment variables can be set in a .env file in the project root.
+      Telemetry collection works with Docker, AWS RDS, GCP Cloud SQL, or any PostgreSQL.
 `
 }

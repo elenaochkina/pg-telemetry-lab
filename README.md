@@ -38,12 +38,14 @@ Fully automated logical replication setup:
 
 ### ✅ Telemetry Collection
 
-Real-time replication lag monitoring:
+Real-time replication lag monitoring with **provider-agnostic design**:
+- Works with Docker, AWS RDS, GCP Cloud SQL, or any PostgreSQL
 - Collects metrics from `pg_stat_replication` and `pg_stat_subscription`
 - JSON/JSONL output for local analysis
 - Prometheus Remote Write for Grafana Cloud
 - Integrated with benchmark runs
 - Tracks LSN position, lag in bytes and seconds
+- Configuration via environment variables (no config file needed)
 
 ### ✅ Provider-Agnostic Architecture
 
@@ -79,18 +81,31 @@ go build -o telemetryctl .
 export PG_PASSWORD=your-secure-password
 ```
 
-**Optional: Setup Grafana Cloud (for telemetry)**
+**Setup Environment Variables**
 
 Create a `.env` file in the project root:
 
 ```bash
-# PostgreSQL
+# PostgreSQL Password
 PG_PASSWORD=your-secure-password
 
-# Grafana Cloud (optional, for telemetry)
+# PostgreSQL Connection (for telemetry - provider-agnostic)
+PG_PRIMARY_HOST=127.0.0.1
+PG_PRIMARY_PORT=5432
+PG_PRIMARY_DATABASE=pgbench
+PG_PRIMARY_USER=postgres
+PG_REPLICA_HOSTS=127.0.0.1,127.0.0.1
+PG_REPLICA_PORTS=5540,5541
+
+# Grafana Cloud (optional, for telemetry push)
 GRAFANA_CLOUD_ENDPOINT=https://prometheus-prod-XX.grafana.net/api/prom/push
 GRAFANA_CLOUD_USER=your-instance-id
 GRAFANA_CLOUD_API_KEY=glc_your_api_key
+
+# Telemetry Labels (optional)
+TELEMETRY_CLUSTER=pg-telemetry-lab
+TELEMETRY_ENVIRONMENT=dev
+TELEMETRY_PROVIDER=docker
 ```
 
 The CLI automatically loads `.env` for environment variables.
@@ -175,19 +190,21 @@ docker exec pg-replica-1 psql -U postgres -d pgbench -c \
 ./telemetryctl benchmark local \
   --duration 60 \
   --clients 20 \
-  --collect-telemetry \
+  --telemetry-enabled \
   --telemetry-output benchmark-metrics.jsonl
 
 # Push to Grafana Cloud during benchmark
 ./telemetryctl benchmark local \
   --duration 60 \
   --clients 20 \
-  --collect-telemetry \
+  --telemetry-enabled \
   --telemetry-writer grafana \
   --telemetry-interval 5s
 ```
 
 ### 6. Collect Telemetry Metrics
+
+**Provider-Agnostic Design:** Telemetry collection works with any PostgreSQL (Docker, AWS RDS, GCP Cloud SQL, on-prem). Connection details come from environment variables, not config files.
 
 **Single-shot collection:**
 ```bash
@@ -209,7 +226,8 @@ docker exec pg-replica-1 psql -U postgres -d pgbench -c \
 
 **Push to Grafana Cloud:**
 ```bash
-# Setup Grafana Cloud credentials (one-time)
+# Ensure Grafana Cloud credentials are in .env file (see Setup section)
+# Or export them:
 export GRAFANA_CLOUD_ENDPOINT="https://prometheus-prod-XX.grafana.net/api/prom/push"
 export GRAFANA_CLOUD_USER="your-instance-id"
 export GRAFANA_CLOUD_API_KEY="glc_..."
@@ -222,6 +240,18 @@ export GRAFANA_CLOUD_API_KEY="glc_..."
 
 # Push for 2 minutes
 ./telemetryctl telemetry collect --writer grafana --interval 5s --duration 2m
+```
+
+**Using with AWS RDS or other providers:**
+```bash
+# Simply update environment variables to point to your PostgreSQL instances
+export PG_PRIMARY_HOST=my-rds-instance.us-west-2.rds.amazonaws.com
+export PG_PRIMARY_PORT=5432
+export PG_REPLICA_HOSTS=replica1.us-west-2.rds.amazonaws.com,replica2.us-west-2.rds.amazonaws.com
+export TELEMETRY_PROVIDER=aws
+
+# Same command works
+./telemetryctl telemetry collect --writer grafana --interval 5s
 ```
 
 **Metrics collected:**
@@ -289,9 +319,18 @@ docker network rm pgnet
 export PG_PASSWORD=test123
 cat > .env <<EOF
 PG_PASSWORD=test123
+PG_PRIMARY_HOST=127.0.0.1
+PG_PRIMARY_PORT=5432
+PG_PRIMARY_DATABASE=pgbench
+PG_PRIMARY_USER=postgres
+PG_REPLICA_HOSTS=127.0.0.1,127.0.0.1
+PG_REPLICA_PORTS=5540,5541
 GRAFANA_CLOUD_ENDPOINT=https://prometheus-prod-XX.grafana.net/api/prom/push
 GRAFANA_CLOUD_USER=your-instance-id
 GRAFANA_CLOUD_API_KEY=glc_your_api_key
+TELEMETRY_CLUSTER=pg-telemetry-lab
+TELEMETRY_ENVIRONMENT=dev
+TELEMETRY_PROVIDER=docker
 EOF
 
 go build -o telemetryctl .
@@ -303,7 +342,7 @@ go build -o telemetryctl .
 ./telemetryctl benchmark local \
   --duration 60 \
   --clients 20 \
-  --collect-telemetry \
+  --telemetry-enabled \
   --telemetry-writer grafana \
   --telemetry-interval 5s
 
@@ -314,7 +353,7 @@ go build -o telemetryctl .
 ./telemetryctl benchmark local \
   --duration 30 \
   --clients 10 \
-  --collect-telemetry \
+  --telemetry-enabled \
   --telemetry-output benchmark-run.jsonl
 
 # Analyze local metrics
@@ -398,16 +437,17 @@ internal/
 │   ├── publisher.go          # Publication management
 │   ├── subscriber.go         # Subscription management
 │   └── wait.go               # Verification
-├── telemetry/                # Telemetry interfaces
+├── telemetry/                # Telemetry (provider-agnostic)
 │   ├── collector.go          # Collector interface
+│   ├── postgres_collector.go # PostgreSQL collector (works with any PostgreSQL)
 │   ├── metrics.go            # Metric structs
 │   └── writer/               # Metric writers
 │       ├── json_writer.go    # JSON/JSONL output
 │       └── prometheus_writer.go  # Grafana Cloud (Prometheus Remote Write)
 ├── provider/dockerpg/        # Docker provider
-│   ├── telemetry/            # Docker telemetry implementation
-│   │   └── collector.go      # Collects from pg_stat_* views
-│   └── ...
+│   ├── provider.go           # Provisioning implementation
+│   ├── benchmark/            # Docker benchmark runner
+│   └── replication/          # Docker replication setup
 ├── benchmark/                # Benchmark abstractions
 ├── config/                   # Configuration
 └── topology/                 # Connection topology

@@ -164,7 +164,7 @@ func handleBenchmark(args []string) error {
 		}
 
 		// Start telemetry in background
-		telemetryCancel = startBackgroundTelemetry(cfg, password, *telemetryInterval, *telemetryWriter, outputFile)
+		telemetryCancel = startBackgroundTelemetry(password, *telemetryInterval, *telemetryWriter, outputFile)
 		defer func() {
 			if telemetryCancel != nil {
 				fmt.Println("🛑 Stopping telemetry collection...")
