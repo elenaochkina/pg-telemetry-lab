@@ -83,9 +83,9 @@ func (r *DockerRunner) Run(opts benchmark.PgBenchOptions) error {
 // It returns the combined pgbench output (stdout + stderr) and an error, if any.
 func (r *DockerRunner) runPgbench(pgbenchArgs []string) (string, error) {
 	// Get password from environment (host-side).
-	pw, err := util.GetRequiredEnv("PG_PASSWORD")
+	pw, err := util.GetPassword()
 	if err != nil {
-		return "",  err
+		return "", err
 	}
 
 	// Build the full docker command arguments.

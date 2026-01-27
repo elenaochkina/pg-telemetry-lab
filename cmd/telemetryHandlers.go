@@ -12,7 +12,6 @@ import (
 	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/telemetry"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/telemetry/writer"
-	"github.com/elenaochkina/pg-telemetry-lab/internal/util"
 )
 
 // handleTelemetry routes telemetry subcommands to appropriate handlers.
@@ -55,7 +54,7 @@ func handleTelemetryCollect(args []string) error {
 	}
 
 	// Get password from environment
-	password, err := util.GetRequiredEnv("PG_PASSWORD")
+	password, err := getPassword()
 	if err != nil {
 		return err
 	}

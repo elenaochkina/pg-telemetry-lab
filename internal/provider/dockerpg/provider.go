@@ -69,7 +69,7 @@ func (dp *DockerPostgresProvider) DestroyPostgres() error {
 }
 
 func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
-	pw, err := util.GetRequiredEnv("PG_PASSWORD")
+	pw, err := util.GetPassword()
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func (dp *DockerPostgresProvider) runReplica(cfg *config.Config, index int) erro
 	// NOTE: At the moment this starts an additional standalone Postgres
 	// container with the same image and credentials as the primary. It is
 	// intended to become a replication replica in a follow-up change.
-	pw, err := util.GetRequiredEnv("PG_PASSWORD")
+	pw, err := util.GetPassword()
 	if err != nil {
 		return err
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/elenaochkina/pg-telemetry-lab/internal/replication"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/telemetry"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/topology"
+	"github.com/elenaochkina/pg-telemetry-lab/internal/util"
 )
 
 // Factory functions create provider-specific implementations based on config.
@@ -95,3 +96,8 @@ func createTelemetryCollector(cfg *config.Config, password string) (telemetry.Co
 }
 
 // Future: AWS provider setup would be in internal/provider/awspg/replication/setup.go
+
+// getPassword is a convenience wrapper for util.GetPassword()
+func getPassword() (string, error) {
+	return util.GetPassword()
+}
