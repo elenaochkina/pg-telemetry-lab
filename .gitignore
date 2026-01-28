@@ -27,6 +27,11 @@ go.sum.lock
 # ============================
 .telemetry/
 
+# Telemetry output files
+*.jsonl
+metrics.jsonl
+benchmark-metrics.jsonl
+
 # ============================
 # Documentation / Notes
 # ============================

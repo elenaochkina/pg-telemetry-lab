@@ -39,6 +39,11 @@ func GetRequiredEnv(key string) (string, error) {
 	}
 	return value, nil
 }
+
+// GetPassword retrieves the PostgreSQL password from the PG_PASSWORD environment variable.
+func GetPassword() (string, error) {
+	return GetRequiredEnv("PG_PASSWORD")
+}
 func FormatArgs(args []string) string {
     var result string
     for _, a := range args {

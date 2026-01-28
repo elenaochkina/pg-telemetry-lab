@@ -28,6 +28,8 @@ func Run(args []string) error {
 		return handleBenchmark(args[1:])
 	case "replication":
 		return handleReplication(args[1:])
+	case "telemetry":
+		return handleTelemetry(args[1:])
 	default:
 		return fmt.Errorf("unknown command: %s\n\n%s", command, usage())
 	}
@@ -44,11 +46,13 @@ Commands:
   destroy       Destroy PostgreSQL cluster
   benchmark     Run pgbench benchmark
   replication   Manage logical replication
+  telemetry     Collect telemetry metrics
 
 Examples:
   telemetryctl provision local
   telemetryctl benchmark local --duration 120
   telemetryctl replication setup
+  telemetryctl telemetry collect
   telemetryctl destroy local
 
 For command-specific help:
