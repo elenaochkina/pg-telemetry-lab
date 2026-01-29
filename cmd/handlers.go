@@ -142,19 +142,8 @@ func handleBenchmark(args []string) error {
 		return err
 	}
 
-	// Initialize pgbench schema
-	fmt.Println("🔧 Initializing pgbench schema...")
-	if err := runner.Init(benchmark.PgBenchOptions{
-		HostName: primaryTarget.Host,
-		Port:     primaryTarget.Port,
-		User:     primaryTarget.User,
-		Database: primaryTarget.Database,
-		Scale:    *scale,
-	}); err != nil {
-		return fmt.Errorf("initialize pgbench: %w", err)
-	}
-
-	// Start telemetry collection if requested
+	// Start telemetry collection BEFORE pgbench initialization (if requested)
+	// This allows observing metrics during the initialization workload
 	var telemetryCancel context.CancelFunc
 	if *collectTelemetry {
 		// Set default output file if not specified (only for json writer)
@@ -173,6 +162,18 @@ func handleBenchmark(args []string) error {
 				fmt.Println("✅ Telemetry collection stopped")
 			}
 		}()
+	}
+
+	// Initialize pgbench schema
+	fmt.Println("🔧 Initializing pgbench schema...")
+	if err := runner.Init(benchmark.PgBenchOptions{
+		HostName: primaryTarget.Host,
+		Port:     primaryTarget.Port,
+		User:     primaryTarget.User,
+		Database: primaryTarget.Database,
+		Scale:    *scale,
+	}); err != nil {
+		return fmt.Errorf("initialize pgbench: %w", err)
 	}
 
 	// Run benchmark

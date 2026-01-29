@@ -110,10 +110,10 @@ func (w *PrometheusWriter) convertToPrometheusSamples(metrics *telemetry.Replica
 			labels,
 		))
 
-		// Lag in seconds
+		// Lag in milliseconds
 		timeseries = append(timeseries, w.createTimeSeries(
-			"pg_replica_lag_seconds",
-			replica.LagSeconds,
+			"pg_replica_lag_milliseconds",
+			replica.LagMilliseconds,
 			timestamp,
 			labels,
 		))

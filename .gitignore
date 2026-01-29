@@ -33,6 +33,9 @@ go.sum.lock
 metrics.jsonl
 benchmark-metrics.jsonl
 
+# Test/analysis scripts
+extract_metrics.sh
+
 # ============================
 # Documentation / Notes
 # ============================

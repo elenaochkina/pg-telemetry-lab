@@ -5,12 +5,13 @@ environment: "local"
 postgres:
   image: "postgres:16"
   network: "pgnet"
+  max_connections: 300  # Increase from default 100 to support heavy benchmarks
 
   # Docker resource limits (CPU allocation)
   resources:
     primary_cpu: 2.0    # Primary gets 2 CPUs
-    replica_cpu: 0.5    # Each replica gets 0.5 CPUs
-    benchmark_cpu: 1.0  # pgbench client gets 1 CPU
+    replica_cpu: 0.2    # Each replica gets 0.3 CPUs (heavily constrained)
+    benchmark_cpu: 3.0  # pgbench client gets 2 CPUs
 
   primary:
     name: "pg-primary"
@@ -19,7 +20,7 @@ postgres:
     user: "postgres"
 
   replicas:
-    count: 2
+    count: 16
     base_port: 5540
     name_prefix: "pg-replica-"
 

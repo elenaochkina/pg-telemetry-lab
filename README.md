@@ -1,497 +1,282 @@
 # 📊 pg-telemetry-lab
 
-**A production-ready Golang project for provisioning PostgreSQL clusters with logical replication, running benchmarks, and collecting operational telemetry.**
+**Production-ready Go CLI for PostgreSQL cluster provisioning, logical replication setup, and real-time telemetry monitoring.**
 
-This project demonstrates:
-
-- **Clean architecture** with provider abstraction (Docker now; AWS ready)
-- **Factory pattern** for provider-specific implementations
-- **Go CLI application** (`telemetryctl`) with unified command structure
-- **YAML-based configuration** with provider-specific settings
-- **PostgreSQL logical replication** setup and verification
-- **Docker-based development** with production-ready patterns
-- **pgbench benchmarking** for performance testing
-- **Real-time telemetry** with Grafana Cloud integration (Prometheus Remote Write)
+Demonstrates clean architecture with provider abstraction, factory pattern, and comprehensive PostgreSQL replication lag monitoring. Tested with up to 16 replicas, 200 concurrent clients, and 5M row datasets.
 
 ---
 
-## ✨ Features
+## 🎯 Performance Results
 
-### ✅ Unified CLI: `telemetryctl`
+### Replication Lag Under Heavy Load
 
-A single command-line tool that manages the entire PostgreSQL cluster lifecycle.
+**Test Configuration:**
+- Dataset: pgbench scale 50 (5M rows, ~800MB)
+- Duration: 20 minutes (1200 seconds)
+- PostgreSQL: 16 with logical replication
+- Test environment: macOS, Docker Desktop, M1 MacBook Air
 
-**Commands:**
-- `provision local` — Provision primary + replicas
-- `destroy local` — Remove provisioned containers
-- `benchmark local` — Run pgbench benchmarks
-- `replication setup` — Setup logical replication (publication + subscriptions)
-- `telemetry collect` — Collect replication lag metrics (JSON or Grafana Cloud)
+### Performance by Client Count and Replica Count
 
-### ✅ Logical Replication Support
+| Replicas (CPU)  | 10 Clients | 50 Clients | 100 Clients | 200 Clients |
+|-----------------|------------|------------|-------------|-------------|
+| 🟢 **1 (0.4)**  | 4260       | 3944       | 3574        | 3076        |
+| 🔵 **4 (0.4)**  | 3608       | 3692       | 3331        | 3008        |
+| 🟡 **8 (0.4)**  | 3266       | 3466       | 3179        | 2736        |
+| 🔴 **16 (0.4)** | 2645       | 2955       | 2713        | 2466        |
 
-Fully automated logical replication setup:
-- Creates publication on primary for specified tables
-- Creates subscriptions on all replicas
-- Waits for replication catch-up
-- Verifies data replication
+**Key Observations:**
+- **Peak throughput:** 4260 TPS at 10 clients (1 replica baseline)
+- **Critical threshold:** Between 4-8 replicas, replication overhead emerges even under high client load
+  - At 200 clients: 1→4 = 2.2% degradation, 4→8 = 9.0% degradation, 8→16 = 9.9% degradation
+  - **Total degradation at 16 replicas: 19.8%** (3076 → 2466 TPS at 200 clients)
+- **Recommended limit:** Up to 4 replicas for constrained environments (0.4 CPU per replica)
+- **Initialization lag:** Grows exponentially (0.5s → 1.4s → 5.6s → 12.7s for 1/4/8/16 replicas)
+- **Steady-state lag:** Higher at 16 replicas (430-1466ms vs 10-37ms for 1-8 replicas) — **replicas struggle to keep up**
+- **Color coding:** 🟢 1 replica | 🔵 4 replicas | 🟡 8 replicas | 🔴 16 replicas (all 0.4 CPU per replica)
 
-### ✅ Telemetry Collection
+→ See [Performance Analysis](docs/ANALYSIS.md) for comprehensive conclusions
 
-Real-time replication lag monitoring with **provider-agnostic design**:
-- Works with Docker, AWS RDS, GCP Cloud SQL, or any PostgreSQL
-- Collects metrics from `pg_stat_replication` and `pg_stat_subscription`
-- JSON/JSONL output for local analysis
-- Prometheus Remote Write for Grafana Cloud
-- Integrated with benchmark runs
-- Tracks LSN position, lag in bytes and seconds
-- Configuration via environment variables (no config file needed)
+**Key Findings:**
+- ✅ Successfully handles 16 replicas with logical replication
+- ✅ Resource-constrained replicas (0.4 CPU) test worst-case scenarios
+- ✅ Exponential backoff retry handles slow replica startup
+- ✅ Millisecond-precision lag tracking captures transient spikes
+- ✅ Captures both initialization and steady-state workload metrics
 
-### ✅ Provider-Agnostic Architecture
+→ See [Benchmarking Guide](docs/BENCHMARKING.md) for detailed testing methodology
 
-Clean separation using factory pattern:
-- **Controllers** (`cmd/handlers.go`) - Parse CLI input, call factory
-- **Factory** (`cmd/factory.go`) - Create Docker/AWS implementations
-- **Service** (`internal/replication/setup.go`) - Provider-agnostic business logic
-- **Providers** (`internal/provider/dockerpg`) - Infrastructure code
+---
+
+## ✨ Key Features
+
+- **Provider-Agnostic Telemetry** — Works with Docker, AWS RDS, GCP Cloud SQL, or any PostgreSQL (environment-based configuration)
+- **Logical Replication** — Automated publication/subscription setup with verification
+- **Real-Time Metrics** — Prometheus Remote Write to Grafana Cloud with millisecond precision
+- **Clean Architecture** — Factory pattern with controller → service → provider separation
+- **Resource Testing** — Configurable CPU limits (0.1-4.0) to simulate constrained environments
+- **Unified CLI** — Single `telemetryctl` binary for provision, benchmark, replication, telemetry
+- **Production Patterns** — Exponential backoff retries, context cancellation, graceful shutdown
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-
 - Go 1.21+
 - Docker
-- PostgreSQL password in environment
+- (Optional) Grafana Cloud account for metrics push
 
-### 1. Clone and Build
+### 1. Build
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/elenaochkina/pg-telemetry-lab.git
 cd pg-telemetry-lab
-
-# Build CLI
 go build -o telemetryctl .
 ```
 
-### 2. Set Password
+### 2. Configure Environment
 
 ```bash
-export PG_PASSWORD=your-secure-password
+cp .env.example .env
+# Edit .env with your PostgreSQL password and Grafana credentials
 ```
 
-**Setup Environment Variables**
-
-Create a `.env` file in the project root:
-
+**Required variables:**
 ```bash
-# PostgreSQL Password
 PG_PASSWORD=your-secure-password
-
-# PostgreSQL Connection (for telemetry - provider-agnostic)
 PG_PRIMARY_HOST=127.0.0.1
 PG_PRIMARY_PORT=5432
-PG_PRIMARY_DATABASE=pgbench
-PG_PRIMARY_USER=postgres
-PG_REPLICA_HOSTS=127.0.0.1,127.0.0.1
+PG_REPLICA_HOSTS=127.0.0.1,127.0.0.1  # Comma-separated
 PG_REPLICA_PORTS=5540,5541
+```
 
-# Grafana Cloud (optional, for telemetry push)
+**Optional (for Grafana Cloud):**
+```bash
 GRAFANA_CLOUD_ENDPOINT=https://prometheus-prod-XX.grafana.net/api/prom/push
 GRAFANA_CLOUD_USER=your-instance-id
-GRAFANA_CLOUD_API_KEY=glc_your_api_key
-
-# Telemetry Labels (optional)
-TELEMETRY_CLUSTER=pg-telemetry-lab
-TELEMETRY_ENVIRONMENT=dev
-TELEMETRY_PROVIDER=docker
+GRAFANA_CLOUD_API_KEY=glc_...
 ```
 
-The CLI automatically loads `.env` for environment variables.
-
-### 3. Provision Cluster
-
-```bash
-./telemetryctl provision local
-```
-
-**Creates:**
-- Docker network (`pgnet`)
-- Primary container (port 5432)
-- 2 replica containers (ports 5540, 5541)
-
-**Verify:**
-```bash
-docker network ls      # shows pgnet
-docker ps              # shows pg-primary, pg-replica-1, pg-replica-2
-docker exec pg-primary psql -U postgres -c "SELECT version()"
-```
-
-### 4. Setup Logical Replication
+### 3. Setup Cluster with Replication
 
 ```bash
 ./telemetryctl replication setup
 ```
 
-**What it does:**
-1. Provisions cluster (if not running)
-2. Initializes pgbench schema on primary
-3. Creates publication on primary
-4. Initializes pgbench schema on replicas
-5. Creates subscriptions on replicas
-6. Waits for LSN sync
-7. Verifies with test data
+This provisions primary + replicas, initializes pgbench schema, and configures logical replication.
 
-**Options:**
-```bash
-# Skip schema initialization
-./telemetryctl replication setup --no-init-schema
-
-# Skip verification
-./telemetryctl replication setup --no-verify
-
-# Custom timeout
-./telemetryctl replication setup --timeout 10m
-```
-
-**Verify replication:**
-```bash
-# Insert on primary
-docker exec pg-primary psql -U postgres -d pgbench -c \
-  "INSERT INTO pgbench_accounts (aid, bid, abalance) VALUES (999, 1, 5000)"
-
-# Check replica
-docker exec pg-replica-1 psql -U postgres -d pgbench -c \
-  "SELECT * FROM pgbench_accounts WHERE aid = 999"
-
-# Check replication status
-docker exec pg-replica-1 psql -U postgres -d pgbench -c \
-  "SELECT subname, received_lsn, latest_end_lsn FROM pg_stat_subscription"
-```
-
-### 5. Run Benchmark
+### 4. Run Benchmark with Telemetry
 
 ```bash
-./telemetryctl benchmark local --duration 120 --clients 20
-```
-
-**Options:**
-```bash
---duration   Benchmark duration in seconds (default: 60)
---clients    Number of concurrent clients (default: 10)
---scale      Dataset size (default: 1)
---progress   Progress interval in seconds (default: 5)
-```
-
-**With telemetry collection:**
-```bash
-# Collect to JSON file during benchmark
+# Local JSON output
 ./telemetryctl benchmark local \
-  --duration 60 \
-  --clients 20 \
-  --telemetry-enabled \
-  --telemetry-output benchmark-metrics.jsonl
+  --clients 20 --duration 60 \
+  --collect-telemetry \
+  --telemetry-output metrics.jsonl
 
-# Push to Grafana Cloud during benchmark
+# Push to Grafana Cloud
 ./telemetryctl benchmark local \
-  --duration 60 \
-  --clients 20 \
-  --telemetry-enabled \
+  --clients 20 --duration 60 \
+  --collect-telemetry \
   --telemetry-writer grafana \
   --telemetry-interval 5s
 ```
 
-### 6. Collect Telemetry Metrics
-
-**Provider-Agnostic Design:** Telemetry collection works with any PostgreSQL (Docker, AWS RDS, GCP Cloud SQL, on-prem). Connection details come from environment variables, not config files.
-
-**Single-shot collection:**
-```bash
-# Pretty JSON to stdout
-./telemetryctl telemetry collect
-
-# JSONL to file
-./telemetryctl telemetry collect --pretty=false --output metrics.jsonl
-```
-
-**Continuous polling:**
-```bash
-# Collect every 5 seconds to file
-./telemetryctl telemetry collect --interval 5s --output metrics.jsonl
-
-# Collect for 2 minutes
-./telemetryctl telemetry collect --interval 5s --duration 2m --output metrics.jsonl
-```
-
-**Push to Grafana Cloud:**
-```bash
-# Ensure Grafana Cloud credentials are in .env file (see Setup section)
-# Or export them:
-export GRAFANA_CLOUD_ENDPOINT="https://prometheus-prod-XX.grafana.net/api/prom/push"
-export GRAFANA_CLOUD_USER="your-instance-id"
-export GRAFANA_CLOUD_API_KEY="glc_..."
-
-# Push single metric
-./telemetryctl telemetry collect --writer grafana
-
-# Continuous push every 5 seconds
-./telemetryctl telemetry collect --writer grafana --interval 5s
-
-# Push for 2 minutes
-./telemetryctl telemetry collect --writer grafana --interval 5s --duration 2m
-```
-
-**Using with AWS RDS or other providers:**
-```bash
-# Simply update environment variables to point to your PostgreSQL instances
-export PG_PRIMARY_HOST=my-rds-instance.us-west-2.rds.amazonaws.com
-export PG_PRIMARY_PORT=5432
-export PG_REPLICA_HOSTS=replica1.us-west-2.rds.amazonaws.com,replica2.us-west-2.rds.amazonaws.com
-export TELEMETRY_PROVIDER=aws
-
-# Same command works
-./telemetryctl telemetry collect --writer grafana --interval 5s
-```
-
-**Metrics collected:**
-- `pg_primary_lsn_bytes` - Current LSN position on primary
-- `pg_replication_lag_bytes` - Replication lag in bytes (from primary view)
-- `pg_replica_lag_bytes` - Replication lag in bytes (from replica view)
-- `pg_replica_lag_seconds` - Replication lag in seconds
-
-**View in Grafana Cloud:**
-```promql
-# Replication lag in seconds
-pg_replica_lag_seconds{cluster="pg-telemetry-lab"}
-
-# Replication lag in bytes
-pg_replica_lag_bytes{cluster="pg-telemetry-lab"}
-
-# Primary LSN growth rate
-rate(pg_primary_lsn_bytes{cluster="pg-telemetry-lab"}[1m])
-```
-
-### 7. Cleanup
+### 5. Cleanup
 
 ```bash
 ./telemetryctl destroy local
 docker network rm pgnet
 ```
 
----
-
-## 🧪 Complete Test Workflow
-
-### Basic Workflow
-
-```bash
-# Setup
-export PG_PASSWORD=test123
-go build -o telemetryctl .
-
-# Provision and setup replication
-./telemetryctl replication setup
-
-# Verify replication
-docker exec pg-primary psql -U postgres -d pgbench -c \
-  "INSERT INTO pgbench_accounts (aid, bid, abalance) VALUES (888, 1, 3000)"
-
-docker exec pg-replica-1 psql -U postgres -d pgbench -c \
-  "SELECT * FROM pgbench_accounts WHERE aid = 888"
-
-# Run benchmark
-./telemetryctl benchmark local --duration 30 --clients 5
-
-# Check lag
-docker exec pg-replica-1 psql -U postgres -d pgbench -c \
-  "SELECT subname, received_lsn, latest_end_lsn FROM pg_stat_subscription"
-
-# Cleanup
-./telemetryctl destroy local
-docker network rm pgnet
-```
-
-### With Telemetry Monitoring
-
-```bash
-# Setup with Grafana Cloud credentials
-export PG_PASSWORD=test123
-cat > .env <<EOF
-PG_PASSWORD=test123
-PG_PRIMARY_HOST=127.0.0.1
-PG_PRIMARY_PORT=5432
-PG_PRIMARY_DATABASE=pgbench
-PG_PRIMARY_USER=postgres
-PG_REPLICA_HOSTS=127.0.0.1,127.0.0.1
-PG_REPLICA_PORTS=5540,5541
-GRAFANA_CLOUD_ENDPOINT=https://prometheus-prod-XX.grafana.net/api/prom/push
-GRAFANA_CLOUD_USER=your-instance-id
-GRAFANA_CLOUD_API_KEY=glc_your_api_key
-TELEMETRY_CLUSTER=pg-telemetry-lab
-TELEMETRY_ENVIRONMENT=dev
-TELEMETRY_PROVIDER=docker
-EOF
-
-go build -o telemetryctl .
-
-# Provision and setup replication
-./telemetryctl replication setup
-
-# Run benchmark with telemetry to Grafana Cloud
-./telemetryctl benchmark local \
-  --duration 60 \
-  --clients 20 \
-  --telemetry-enabled \
-  --telemetry-writer grafana \
-  --telemetry-interval 5s
-
-# View in Grafana Cloud: Dashboard → Explore → Query:
-# pg_replica_lag_seconds{cluster="pg-telemetry-lab"}
-
-# Or collect to local file for analysis
-./telemetryctl benchmark local \
-  --duration 30 \
-  --clients 10 \
-  --telemetry-enabled \
-  --telemetry-output benchmark-run.jsonl
-
-# Analyze local metrics
-cat benchmark-run.jsonl | jq '.replicas[0].lag_seconds'
-
-# Cleanup
-./telemetryctl destroy local
-docker network rm pgnet
-```
-
----
-
-## 📝 Configuration
-
-### Docker Config: `configs/local.docker.yaml`
-
-```yaml
-version: 1
-provider: docker
-environment: local
-
-postgres:
-  image: "postgres:16"
-  network: "pgnet"
-  primary:
-    name: "pg-primary"
-    port: 5432
-    database: "pgbench"
-    user: "postgres"
-  replicas:
-    count: 2
-    base_port: 5540
-    name_prefix: "pg-replica-"
-
-replication:
-  enabled: true
-  publication_name: "pgbench_pub"
-  subscription_prefix: "pgbench_sub_"
-  tables:
-    - "public.pgbench_accounts"
-    - "public.pgbench_branches"
-    - "public.pgbench_tellers"
-    - "public.pgbench_history"
-  copy_data: false
-  create_slot: true
-  verify:
-    poll_interval: "500ms"
-    timeout: "2m"
-    strict_lsn_match: true
-```
-
-### AWS Config Template: `configs/production.aws.yaml`
-
-```yaml
-version: 1
-provider: aws
-environment: production
-
-postgres:
-  region: "us-west-2"
-  instance_class: "db.r5.xlarge"
-  engine_version: "16.1"
-  # AWS-specific fields (not yet implemented)
-```
+→ See [Setup Guide](docs/SETUP.md) for detailed installation and troubleshooting
 
 ---
 
 ## 🏗️ Architecture
 
-```
-cmd/
-├── cli.go                    # Router
-├── factory.go                # Provider factory (Docker/AWS)
-├── handlers.go               # Controllers
-├── replicationHandlers.go    # Replication controllers
-└── telemetryHandlers.go      # Telemetry controllers
+**Pattern:** Controller → Factory → Service → Provider
 
+```
+┌─────────────────────────────────────────────────────┐
+│ CLI Layer (cmd/)                                    │
+│  • Parses flags, loads config                       │
+│  • Calls factory to create provider implementations │
+└───────────────────┬─────────────────────────────────┘
+                    │
+┌───────────────────▼─────────────────────────────────┐
+│ Factory (cmd/factory.go)                            │
+│  • createProvider(cfg) → Docker/AWS                 │
+│  • createBenchmarkRunner(cfg) → Provider-specific   │
+│  • createTelemetryCollector() → Provider-agnostic   │
+└───────────────────┬─────────────────────────────────┘
+                    │
+┌───────────────────▼─────────────────────────────────┐
+│ Service Layer (internal/replication, internal/telemetry) │
+│  • Provider-agnostic business logic                 │
+│  • Orchestrates workflows                           │
+└───────────────────┬─────────────────────────────────┘
+                    │
+┌───────────────────▼─────────────────────────────────┐
+│ Provider Layer (internal/provider/dockerpg/)        │
+│  • Docker-specific: container management            │
+│  • AWS-specific: RDS management (planned)           │
+└─────────────────────────────────────────────────────┘
+```
+
+**Key Design Decisions:**
+- **Dependency Inversion:** Services depend on `topology.PGTarget` interface, not concrete providers
+- **Factory Pattern:** CLI doesn't know about Docker/AWS specifics
+- **Provider-Agnostic Telemetry:** Uses environment variables instead of config files (works with any PostgreSQL)
+
+**Directory Structure:**
+```
+cmd/                          # Controllers and factory
 internal/
-├── replication/              # Service layer
-│   ├── setup.go              # Orchestration
-│   ├── publisher.go          # Publication management
-│   ├── subscriber.go         # Subscription management
-│   └── wait.go               # Verification
-├── telemetry/                # Telemetry (provider-agnostic)
-│   ├── collector.go          # Collector interface
-│   ├── postgres_collector.go # PostgreSQL collector (works with any PostgreSQL)
-│   ├── metrics.go            # Metric structs
-│   └── writer/               # Metric writers
-│       ├── json_writer.go    # JSON/JSONL output
-│       └── prometheus_writer.go  # Grafana Cloud (Prometheus Remote Write)
-├── provider/dockerpg/        # Docker provider
-│   ├── provider.go           # Provisioning implementation
-│   ├── benchmark/            # Docker benchmark runner
-│   └── replication/          # Docker replication setup
-├── benchmark/                # Benchmark abstractions
-├── config/                   # Configuration
-└── topology/                 # Connection topology
+  ├── replication/            # Service: orchestration logic
+  ├── telemetry/              # Service: provider-agnostic collectors
+  ├── provider/dockerpg/      # Infrastructure: Docker implementation
+  ├── benchmark/              # Abstractions for pgbench
+  ├── config/                 # YAML configuration
+  └── topology/               # Connection interfaces
 ```
 
-**Pattern:** Controller → Factory → Service → Infrastructure
+→ See [Architecture Guide](docs/ARCHITECTURE.md) for detailed design patterns and code flow
 
-See [Architecture Summary](docs/Summary.md) for detailed design.
+---
+
+## 📊 Metrics Collected
+
+| Metric | Description | Source |
+|--------|-------------|--------|
+| `pg_primary_lsn_bytes` | Current WAL LSN position on primary (bytes) | `pg_current_wal_lsn()` |
+| `pg_replication_lag_bytes` | Lag between primary write and replica replay (bytes) | `pg_stat_replication` |
+| `pg_replica_lag_bytes` | Lag from replica's perspective (bytes) | `pg_stat_subscription` |
+| `pg_replica_lag_milliseconds` | Time-based lag (milliseconds) | Calculated from `last_msg_send_time` |
+
+**View in Grafana Cloud:**
+```promql
+# Lag in milliseconds
+pg_replica_lag_milliseconds{cluster="pg-telemetry-lab"}
+
+# Lag by replica
+pg_replication_lag_bytes{application_name=~"replica.*"}
+
+# Primary write rate (MB/min)
+rate(pg_primary_lsn_bytes[1m]) * 60 / 1024 / 1024
+```
+
+→ See [Telemetry Guide](docs/TELEMETRY.md) for complete metric reference and PromQL queries
+
+---
+
+## 📚 Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Setup Guide](docs/SETUP.md) | Installation, prerequisites, environment configuration, troubleshooting |
+| [Command Reference](docs/USAGE.md) | Complete CLI command reference with all flags and examples |
+| [Telemetry Guide](docs/TELEMETRY.md) | Metrics, Grafana dashboards, PromQL queries, provider-agnostic design |
+| [Benchmarking Guide](docs/BENCHMARKING.md) | Performance testing strategies, load generation, resource tuning |
+| [Replication Guide](docs/REPLICATION.md) | Logical replication deep dive, verification, troubleshooting |
+| [Architecture Guide](docs/ARCHITECTURE.md) | Design patterns, code structure, provider abstraction |
+| [Performance Analysis](docs/ANALYSIS.md) | Comprehensive analysis of replica scaling tests and key findings |
+
+---
+
+## 🛠️ Tech Stack
+
+**Core:**
+- Go 1.21+ (CLI, clean architecture)
+- PostgreSQL 16 (logical replication, `pg_stat_replication`, `pg_stat_subscription`)
+- Docker (local development, resource constraints)
+
+**Testing & Monitoring:**
+- pgbench (TPC-B workload generation)
+- Prometheus Remote Write (metrics push)
+- Grafana Cloud (visualization)
+- PromQL (metric queries)
+
+**Patterns:**
+- Factory pattern for provider abstraction
+- Dependency inversion (interface-based design)
+- Context-based cancellation
+- Exponential backoff retry
+- Environment-based configuration (12-factor app)
 
 ---
 
 ## 🛣️ Roadmap
 
-### Completed ✅
-- [x] Local Docker provisioning
-- [x] pgbench benchmarking
-- [x] Logical replication setup
-- [x] Provider-agnostic architecture
-- [x] Replication verification
-- [x] Unified CLI with factory pattern
-- [x] Telemetry collection (replication lag metrics)
-- [x] JSON/JSONL output for metrics
+**Completed ✅**
+- [x] Docker provider with CPU resource limits
+- [x] Logical replication setup and verification
+- [x] Provider-agnostic telemetry collection
 - [x] Grafana Cloud integration (Prometheus Remote Write)
-- [x] Benchmark integration with telemetry
+- [x] Millisecond-precision lag tracking
+- [x] Retry mechanism for low-resource replicas
+- [x] Support for 32 WAL senders and 300 connections
 
-### In Progress 🚧
+**Planned 🚧**
 - [ ] AWS RDS provider implementation
-- [ ] Additional metrics (WAL, connections, query stats)
-- [ ] Pre-built Grafana dashboards
-- [ ] Alert rules for replication lag
-
----
-
-## 📖 Documentation
-
-- [Architecture Summary](docs/Summary.md) - Design overview and patterns
-- [CLI Consolidation Plan](docs/CLI-CONSOLIDATION-PLAN-REVISED.md) - Implementation details
+- [ ] Pre-built Grafana dashboards (JSON export)
+- [ ] Alert rules for replication lag thresholds
+- [ ] Streaming replication support (in addition to logical)
+- [ ] Additional metrics (connections, query stats, WAL segments)
 
 ---
 
 ## 🤝 Contributing
 
-This is a learning/demonstration project. Contributions and feedback welcome!
+This is a learning/demonstration project. Contributions and feedback are welcome!
 
 ---
 
-Built to demonstrate clean architecture, provider abstraction patterns, and PostgreSQL logical replication in Go.
+## 📄 License
+
+MIT
+
+---
+
+Built to demonstrate clean architecture, provider abstraction, and PostgreSQL replication telemetry in Go.

@@ -85,6 +85,8 @@ func (c *PostgresCollector) collectPrimaryMetrics(ctx context.Context) (*Primary
 	metrics.CurrentLSN = lsnBytes
 
 	// Query pg_stat_replication for connected replicas
+	// Note: Using pg_current_wal_lsn() instead of sent_lsn to capture total lag
+	// including any sender delays on the primary.
 	query := `
 		SELECT
 			application_name,
@@ -94,7 +96,7 @@ func (c *PostgresCollector) collectPrimaryMetrics(ctx context.Context) (*Primary
 			write_lsn::text,
 			flush_lsn::text,
 			replay_lsn::text,
-			COALESCE(pg_wal_lsn_diff(sent_lsn, replay_lsn), 0) AS lag_bytes,
+			COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn), 0) AS lag_bytes,
 			sync_state
 		FROM pg_stat_replication
 	`
@@ -176,9 +178,9 @@ func (c *PostgresCollector) collectReplicaMetrics(ctx context.Context, target to
 		return nil, fmt.Errorf("querying pg_stat_subscription: %w", err)
 	}
 
-	// Calculate lag in seconds
+	// Calculate lag in milliseconds
 	if latestEndTime != nil {
-		metrics.LagSeconds = time.Since(*latestEndTime).Seconds()
+		metrics.LagMilliseconds = float64(time.Since(*latestEndTime).Milliseconds())
 	}
 
 	return metrics, nil

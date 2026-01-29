@@ -96,9 +96,14 @@ func (dp *DockerPostgresProvider) runPrimary(cfg *config.Config) error {
 		// Override the default CMD and pass Postgres settings.
 		"postgres",
 		"-c", "wal_level=logical",
-		"-c", "max_wal_senders=10",
-		"-c", "max_replication_slots=10",
+		"-c", "max_wal_senders=32",
+		"-c", "max_replication_slots=32",
 	)
+
+	// Add max_connections if specified in config
+	if cfg.Postgres.MaxConnections > 0 {
+		args = append(args, "-c", fmt.Sprintf("max_connections=%d", cfg.Postgres.MaxConnections))
+	}
 
 	// Mask password when printing command
 	printArgs := util.MaskArgs(args)
