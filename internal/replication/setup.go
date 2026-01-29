@@ -103,13 +103,16 @@ func Run(opts SetupOptions) error {
 	if opts.InitSchema {
 		fmt.Println("== Initializing pgbench schema on replicas ==")
 		for _, rt := range opts.ReplicaTargetsInternal {
-			if err := opts.BenchmarkRunner.Init(benchmark.PgBenchOptions{
-				HostName: rt.Host,
-				Port:     rt.Port,
-				User:     rt.User,
-				Database: rt.Database,
-				Scale:    1,
-			}); err != nil {
+			// Retry with exponential backoff for low-resource replicas
+			if err := retryWithBackoff(ctx, 5, time.Second, func() error {
+				return opts.BenchmarkRunner.Init(benchmark.PgBenchOptions{
+					HostName: rt.Host,
+					Port:     rt.Port,
+					User:     rt.User,
+					Database: rt.Database,
+					Scale:    1,
+				})
+			}, rt.Label); err != nil {
 				return fmt.Errorf("initialize pgbench on %s: %w", rt.Label, err)
 			}
 			fmt.Printf("✅ Initialized pgbench schema on %s\n", rt.Label)
@@ -213,4 +216,36 @@ func verifyReplication(ctx context.Context, primaryConn DB, replicaTargets []top
 	}
 
 	return nil
+}
+
+// retryWithBackoff retries an operation with exponential backoff.
+// Useful for waiting for low-resource containers to become ready.
+func retryWithBackoff(ctx context.Context, maxRetries int, initialDelay time.Duration, fn func() error, label string) error {
+	delay := initialDelay
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+
+		if attempt < maxRetries {
+			fmt.Printf("⏳ %s not ready yet (attempt %d/%d), retrying in %v...\n", label, attempt, maxRetries, delay)
+
+			select {
+			case <-time.After(delay):
+				// Continue to next attempt
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+
+			// Exponential backoff: double the delay each time
+			delay *= 2
+		}
+	}
+
+	return fmt.Errorf("failed after %d attempts: %w", maxRetries, lastErr)
 }

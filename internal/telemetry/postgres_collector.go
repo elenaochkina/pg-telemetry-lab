@@ -5,33 +5,34 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/db"
-	"github.com/elenaochkina/pg-telemetry-lab/internal/provider/dockerpg"
-	"github.com/elenaochkina/pg-telemetry-lab/internal/telemetry"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/topology"
 	"github.com/jackc/pgx/v5"
 )
 
-// DockerCollector collects telemetry metrics from Docker-based PostgreSQL cluster.
-type DockerCollector struct {
-	cfg      *config.Config
+// PostgresCollector collects telemetry metrics from any PostgreSQL cluster.
+// It is provider-agnostic and works with Docker, AWS RDS, GCP Cloud SQL, or on-prem PostgreSQL.
+type PostgresCollector struct {
+	primary  topology.PGTarget
+	replicas []topology.PGTarget
 	password string
 }
 
-// NewDockerCollector creates a new Docker-specific telemetry collector.
-func NewDockerCollector(cfg *config.Config, password string) *DockerCollector {
-	return &DockerCollector{
-		cfg:      cfg,
+// NewPostgresCollector creates a new provider-agnostic PostgreSQL telemetry collector.
+// It accepts connection targets for primary and replicas, making it reusable across all infrastructure providers.
+func NewPostgresCollector(primary topology.PGTarget, replicas []topology.PGTarget, password string) *PostgresCollector {
+	return &PostgresCollector{
+		primary:  primary,
+		replicas: replicas,
 		password: password,
 	}
 }
 
 // CollectReplicationLag collects replication lag metrics from primary and replicas.
-func (c *DockerCollector) CollectReplicationLag(ctx context.Context) (*telemetry.ReplicationMetrics, error) {
-	metrics := &telemetry.ReplicationMetrics{
+func (c *PostgresCollector) CollectReplicationLag(ctx context.Context) (*ReplicationMetrics, error) {
+	metrics := &ReplicationMetrics{
 		Timestamp: time.Now(),
-		Replicas:  []telemetry.ReplicaMetrics{},
+		Replicas:  []ReplicaMetrics{},
 	}
 
 	// Collect metrics from primary
@@ -42,8 +43,7 @@ func (c *DockerCollector) CollectReplicationLag(ctx context.Context) (*telemetry
 	metrics.Primary = *primaryMetrics
 
 	// Collect metrics from each replica
-	replicaTargets := dockerpg.ReplicaTargets(c.cfg)
-	for _, target := range replicaTargets {
+	for _, target := range c.replicas {
 		replicaMetrics, err := c.collectReplicaMetrics(ctx, target)
 		if err != nil {
 			// Log error but continue with other replicas
@@ -57,18 +57,16 @@ func (c *DockerCollector) CollectReplicationLag(ctx context.Context) (*telemetry
 }
 
 // collectPrimaryMetrics collects metrics from the primary database.
-func (c *DockerCollector) collectPrimaryMetrics(ctx context.Context) (*telemetry.PrimaryMetrics, error) {
-	target := dockerpg.PrimaryTarget(c.cfg)
-
-	conn, err := db.Connect(ctx, target, c.password)
+func (c *PostgresCollector) collectPrimaryMetrics(ctx context.Context) (*PrimaryMetrics, error) {
+	conn, err := db.Connect(ctx, c.primary, c.password)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to primary: %w", err)
 	}
 	defer conn.Close(ctx)
 
-	metrics := &telemetry.PrimaryMetrics{
-		Host:        target.Addr(),
-		Connections: []telemetry.ReplicationSlot{},
+	metrics := &PrimaryMetrics{
+		Host:        c.primary.Addr(),
+		Connections: []ReplicationSlot{},
 	}
 
 	// Get current LSN
@@ -87,6 +85,8 @@ func (c *DockerCollector) collectPrimaryMetrics(ctx context.Context) (*telemetry
 	metrics.CurrentLSN = lsnBytes
 
 	// Query pg_stat_replication for connected replicas
+	// Note: Using pg_current_wal_lsn() instead of sent_lsn to capture total lag
+	// including any sender delays on the primary.
 	query := `
 		SELECT
 			application_name,
@@ -96,7 +96,7 @@ func (c *DockerCollector) collectPrimaryMetrics(ctx context.Context) (*telemetry
 			write_lsn::text,
 			flush_lsn::text,
 			replay_lsn::text,
-			COALESCE(pg_wal_lsn_diff(sent_lsn, replay_lsn), 0) AS lag_bytes,
+			COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn), 0) AS lag_bytes,
 			sync_state
 		FROM pg_stat_replication
 	`
@@ -108,7 +108,7 @@ func (c *DockerCollector) collectPrimaryMetrics(ctx context.Context) (*telemetry
 	defer rows.Close()
 
 	for rows.Next() {
-		var slot telemetry.ReplicationSlot
+		var slot ReplicationSlot
 		err := rows.Scan(
 			&slot.ApplicationName,
 			&slot.ClientAddr,
@@ -134,14 +134,14 @@ func (c *DockerCollector) collectPrimaryMetrics(ctx context.Context) (*telemetry
 }
 
 // collectReplicaMetrics collects metrics from a replica database.
-func (c *DockerCollector) collectReplicaMetrics(ctx context.Context, target topology.PGTarget) (*telemetry.ReplicaMetrics, error) {
+func (c *PostgresCollector) collectReplicaMetrics(ctx context.Context, target topology.PGTarget) (*ReplicaMetrics, error) {
 	conn, err := db.Connect(ctx, target, c.password)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to replica: %w", err)
 	}
 	defer conn.Close(ctx)
 
-	metrics := &telemetry.ReplicaMetrics{
+	metrics := &ReplicaMetrics{
 		Host: target.Addr(),
 	}
 
@@ -178,16 +178,16 @@ func (c *DockerCollector) collectReplicaMetrics(ctx context.Context, target topo
 		return nil, fmt.Errorf("querying pg_stat_subscription: %w", err)
 	}
 
-	// Calculate lag in seconds
+	// Calculate lag in milliseconds
 	if latestEndTime != nil {
-		metrics.LagSeconds = time.Since(*latestEndTime).Seconds()
+		metrics.LagMilliseconds = float64(time.Since(*latestEndTime).Milliseconds())
 	}
 
 	return metrics, nil
 }
 
 // StartPolling starts continuous metric collection with given interval.
-func (c *DockerCollector) StartPolling(ctx context.Context, interval time.Duration, writer telemetry.MetricsWriter) error {
+func (c *PostgresCollector) StartPolling(ctx context.Context, interval time.Duration, writer MetricsWriter) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

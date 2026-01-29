@@ -8,6 +8,7 @@ import (
 
 	"github.com/elenaochkina/pg-telemetry-lab/internal/benchmark"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
+	"github.com/elenaochkina/pg-telemetry-lab/internal/util"
 )
 
 // handleProvision provisions a PostgreSQL cluster.
@@ -103,9 +104,10 @@ func handleBenchmark(args []string) error {
 	progress := fs.Int("progress", 5, "progress interval in seconds (0 = disabled)")
 
 	// Telemetry flags
-	telemetryEnabled := fs.Bool("telemetry-enabled", false, "enable telemetry metrics collection during benchmark")
+	collectTelemetry := fs.Bool("collect-telemetry", false, "collect telemetry metrics during benchmark")
 	telemetryInterval := fs.Duration("telemetry-interval", 5*time.Second, "telemetry collection interval")
-	telemetryOutput := fs.String("telemetry-output", "", "telemetry output file (default: benchmark-metrics.jsonl)")
+	telemetryWriter := fs.String("telemetry-writer", "json", "telemetry writer: json, grafana")
+	telemetryOutput := fs.String("telemetry-output", "", "telemetry output file (only for json writer, default: benchmark-metrics.jsonl)")
 
 	if err := fs.Parse(args[1:]); err != nil {
 		return fmt.Errorf("parsing flags: %w", err)
@@ -123,7 +125,7 @@ func handleBenchmark(args []string) error {
 	}
 
 	// Get password from environment
-	password, err := getPassword()
+	password, err := util.GetRequiredEnv("PG_PASSWORD")
 	if err != nil {
 		return err
 	}
@@ -140,6 +142,28 @@ func handleBenchmark(args []string) error {
 		return err
 	}
 
+	// Start telemetry collection BEFORE pgbench initialization (if requested)
+	// This allows observing metrics during the initialization workload
+	var telemetryCancel context.CancelFunc
+	if *collectTelemetry {
+		// Set default output file if not specified (only for json writer)
+		outputFile := *telemetryOutput
+		if outputFile == "" && *telemetryWriter == "json" {
+			outputFile = "benchmark-metrics.jsonl"
+		}
+
+		// Start telemetry in background
+		telemetryCancel = startBackgroundTelemetry(password, *telemetryInterval, *telemetryWriter, outputFile)
+		defer func() {
+			if telemetryCancel != nil {
+				fmt.Println("🛑 Stopping telemetry collection...")
+				telemetryCancel()
+				time.Sleep(500 * time.Millisecond) // Allow graceful shutdown
+				fmt.Println("✅ Telemetry collection stopped")
+			}
+		}()
+	}
+
 	// Initialize pgbench schema
 	fmt.Println("🔧 Initializing pgbench schema...")
 	if err := runner.Init(benchmark.PgBenchOptions{
@@ -150,45 +174,6 @@ func handleBenchmark(args []string) error {
 		Scale:    *scale,
 	}); err != nil {
 		return fmt.Errorf("initialize pgbench: %w", err)
-	}
-
-	// Start telemetry collection if requested.
-	//
-	// Telemetry lifecycle management:
-	// Telemetry is a subordinate process to the benchmark - it exists only to
-	// observe the benchmark's execution. When the benchmark completes (or fails),
-	// telemetry must stop. Without explicit cancellation, the background goroutine
-	// would continue polling indefinitely, causing a goroutine leak.
-	//
-	// Cancellation flow:
-	// 1. startBackgroundTelemetry() creates a cancelable context and launches a goroutine
-	// 2. The goroutine runs collector.StartPolling(ctx, ...) in a loop
-	// 3. startBackgroundTelemetry() returns a cancel function
-	// 4. We defer the cancel function, ensuring it runs when handleBenchmark() exits
-	// 5. On exit, defer calls cancel() → context is canceled → goroutine detects ctx.Done()
-	// 6. Goroutine stops polling, closes file, and exits cleanly
-	//
-	// This ensures telemetry stops on ALL exit paths: normal completion, early errors, or panics.
-	var telemetryCancel context.CancelFunc
-	if *telemetryEnabled {
-		// Set default output file if not specified
-		outputFile := *telemetryOutput
-		if outputFile == "" {
-			outputFile = "benchmark-metrics.jsonl"
-		}
-
-		// Start telemetry collection in background goroutine
-		telemetryCancel = startBackgroundTelemetry(cfg, password, *telemetryInterval, outputFile)
-
-		// Ensure telemetry stops when benchmark completes
-		defer func() {
-			if telemetryCancel != nil {
-				fmt.Println("🛑 Stopping telemetry collection...")
-				telemetryCancel() // Cancel context → signals goroutine to stop
-				time.Sleep(500 * time.Millisecond) // Wait for final metric write and cleanup
-				fmt.Println("✅ Telemetry collection stopped")
-			}
-		}()
 	}
 
 	// Run benchmark

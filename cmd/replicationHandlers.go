@@ -8,6 +8,7 @@ import (
 
 	"github.com/elenaochkina/pg-telemetry-lab/internal/config"
 	"github.com/elenaochkina/pg-telemetry-lab/internal/replication"
+	"github.com/elenaochkina/pg-telemetry-lab/internal/util"
 )
 
 // handleReplication routes replication subcommands to appropriate handlers.
@@ -58,7 +59,7 @@ func handleReplicationSetup(args []string) error {
 	}
 
 	// Get password
-	password, err := getPassword()
+	password, err := util.GetPassword()
 	if err != nil {
 		return err
 	}

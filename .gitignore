@@ -2,6 +2,7 @@
 # Go build artifacts
 # ============================
 /telemetryctl
+/telemetryclt
 *.exe
 *.exe~
 *.dll
@@ -31,6 +32,9 @@ go.sum.lock
 *.jsonl
 metrics.jsonl
 benchmark-metrics.jsonl
+
+# Test/analysis scripts
+extract_metrics.sh
 
 # ============================
 # Documentation / Notes

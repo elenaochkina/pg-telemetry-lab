@@ -37,6 +37,8 @@ type Config struct {
 		SecurityGroups   []string `yaml:"security_groups,omitempty"`
 
 		// Shared fields across all providers
+		MaxConnections int `yaml:"max_connections,omitempty"` // PostgreSQL max_connections (default: 100)
+
 		Primary struct {
 			// Docker uses "name" for container name
 			// AWS uses "identifier" for RDS instance identifier

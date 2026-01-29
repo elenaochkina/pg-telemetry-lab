@@ -31,12 +31,12 @@ type ReplicationSlot struct {
 
 // ReplicaMetrics contains metrics from a replica database.
 type ReplicaMetrics struct {
-	Host            string    `json:"host"`
-	SubscriptionName string   `json:"subscription_name"`
-	ReceivedLSN     string    `json:"received_lsn"`    // Hex format
-	LatestEndLSN    string    `json:"latest_end_lsn"`  // Hex format
-	LagBytes        int64     `json:"lag_bytes"`       // Long integer
-	LagSeconds      float64   `json:"lag_seconds"`     // Calculated from timestamps
-	LastMsgSendTime time.Time `json:"last_msg_send_time"`
-	LastMsgRecvTime time.Time `json:"last_msg_recv_time"`
+	Host             string    `json:"host"`
+	SubscriptionName string    `json:"subscription_name"`
+	ReceivedLSN      string    `json:"received_lsn"`     // Hex format
+	LatestEndLSN     string    `json:"latest_end_lsn"`   // Hex format
+	LagBytes         int64     `json:"lag_bytes"`        // Long integer
+	LagMilliseconds  float64   `json:"lag_milliseconds"` // Calculated from timestamps
+	LastMsgSendTime  time.Time `json:"last_msg_send_time"`
+	LastMsgRecvTime  time.Time `json:"last_msg_recv_time"`
 }
